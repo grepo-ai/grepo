@@ -4,9 +4,8 @@ from tree_sitter import Language, Parser
 import tree_sitter_python as tspython
 from pprint import pprint
 
+
 code = """
-"test comment"
-"test comment 2"
 class Thronefall:
     def __init__(self):
         self.level = 0
@@ -26,7 +25,7 @@ py_language = Language(tspython.language())
 parser = Parser(py_language)
 tree = parser.parse(code.encode())
 
-stmt_str_pattern = """(class_definition
+test_query = """(class_definition
 
    name: (identifier) @class_name
    body: (
@@ -37,8 +36,6 @@ stmt_str_pattern = """(class_definition
 ) @classes"""
 
 
-stmt_str_query = py_language.query(stmt_str_pattern)
+stmt_str_query = py_language.query(test_query)
 
 tree_captures = stmt_str_query.captures(tree.root_node)
-pprint(tree_captures)
-

@@ -139,10 +139,6 @@ def embed_documents_and_query(
     return scores, documents_embeddings, docs_map
 
 
-
-
-
-
 if __name__ == "__main__":
     import time
 

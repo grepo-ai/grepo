@@ -1,17 +1,21 @@
 import uuid
 
 
-def initiate_pylate(**config):
+def initiate_pylate():
     from pylate import indexes, models, retrieve
 
     hf_model = "Alibaba-NLP/gte-modernbert-base"
-    model = models.ColBERT(model_name_or_path=hf_model, document_length=8192, **config)
+    model = models.ColBERT(
+        model_name_or_path=hf_model, document_length=8192, embedding_size=768
+    )
     print("=== Loaded model successfully ===")
 
     index = indexes.PLAID(
         index_folder="pylate-indexes",
         index_name="dino_repo_index",
         override=True,
+        centroid_score_threshold=0.70,
+        ncells=16,
         embedding_size=768,
     )
     retriever = retrieve.ColBERT(index=index)
@@ -19,7 +23,7 @@ def initiate_pylate(**config):
     return model, retriever, index
 
 
-def load_data(code_5=None):
+def load_data():
     code_1 = """
     def r(a):
         if len(a) < 2:
@@ -86,7 +90,76 @@ def load_data(code_5=None):
 
     """
 
-    return [code_1, code_2, code_3, code_4, code_5]
+    code_5 = """
+    class Hello:
+        def __init__(self, a, b):
+            self.a = a
+            self.b = b
+
+        def hello_world(self):
+            return "Hello world"
+
+
+    hey = Hello()
+    hey.hello_world()
+    """
+
+    code_6 = """
+
+    def menu(death_count):
+        global points
+        run = True
+        while run:
+            SCREEN.fill((255, 255, 255))
+            font = pygame.font.Font("freesansbold.ttf", 30)
+
+            if death_count == 0:
+                text = font.render("Press any Key to Start", True, (0, 0, 0))
+            elif death_count > 0:
+                text = font.render("Press any Key to Restart", True, (0, 0, 0))
+                score = font.render("Your Score: " + str(points), True, (0, 0, 0))
+                scoreRect = score.get_rect()
+                scoreRect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50)
+                SCREEN.blit(score, scoreRect)
+            textRect = text.get_rect()
+            textRect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+            SCREEN.blit(text, textRect)
+            SCREEN.blit(RUNNING[0], (SCREEN_WIDTH // 2 - 20, SCREEN_HEIGHT // 2 - 140))
+            pygame.display.update()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    run = False
+                if event.type == pygame.KEYDOWN:
+                    main()
+
+
+    menu(death_count=0)
+
+    """
+
+    code_7 = """
+
+        class Cloud:
+            def __init__(self):
+                self.x = SCREEN_WIDTH + random.randint(800, 1000)
+                self.y = random.randint(50, 100)
+                self.image = CLOUD
+                self.width = self.image.get_width()
+
+            def update(self):
+                self.x -= game_speed
+                if self.x < -self.width:
+                    self.x = SCREEN_WIDTH + random.randint(2500, 3000)
+                    self.y = random.randint(50, 100)
+
+            def draw(self, SCREEN):
+                SCREEN.blit(self.image, (self.x, self.y))
+
+
+    """
+
+    return [code_1, code_2, code_3, code_4, code_5, code_6, code_7]
 
 
 def embed_documents_and_query(
@@ -131,117 +204,35 @@ def embed_documents_and_query(
 
     scores = retriever.retrieve(
         queries_embeddings=queries_embeddings,
-        k=10,
+        k=5,
     )
 
     print("=== Retrieved the matched documents with respective scores ===")
 
-    return scores, documents_embeddings, docs_map
+    return scores, queries_embeddings, documents_embeddings, docs_map
+
+
+def rerank(scores, queries_embeddings, documents_embeddings, docs_map):
+    ranked_resp = {}
+    return ranked_resp
 
 
 if __name__ == "__main__":
-    import time
-
     print(" --- ### Starting the retrieval process ### --- ")
+    import time
 
     while True:
         time.sleep(10)
-        print("hello\n")
 
+    data_docs = load_data()
+    model, retriever, index = initiate_pylate()
 
-"""
-
-#include <stdio.h>
-#include <stdlib.h>
-
-char *reader(FILE *f) {
-  char *buffer;
-  int buffer_size = 2;
-  int offset = 0;
-  char c;
-
-  // Set size of buffer where characters will be stored
-  buffer = malloc(buffer_size);
-
-  while ((c = fgetc(f)), c != '\n' && c != EOF) {
-
-    // Condition to check if buffer has space remaining else we increase the
-    // size of buffer to be able to store more characters
-    if (offset ==
-        buffer_size -
-            1) { // -1 for not counting `\0` (string terminator character)
-      // Expand the size of buffer 2x times to reduce chances of resizing
-      // repeatedly
-      buffer_size *= 2;
-
-      // `realloc` allocates a new block of memory and copies old data to new
-      // memory block and finally returns a pointer to the new block of memory
-      // to work with.
-      char *new_buffer = realloc(buffer, buffer_size);
-
-      if (new_buffer == NULL) {
-        free(buffer);
-        return NULL;
-      }
-
-      buffer = new_buffer;
-    }
-
-    // Keep adding characters to buffer
-    buffer[offset] = c;
-    offset++;
-  }
-
-  // If at EOF and we read no bytes, free the buffer and
-  // return NULL to indicate we're at EOF:
-  if (c == EOF && offset == 0) {
-    free(buffer);
-    return NULL;
-  }
-
-  // Trim the size of old buffer as we have space left which is not being used
-  // and again resize and make the new buffer fit to the characters read.
-  if (offset < buffer_size - 1) {
-
-    char *new_buffer = realloc(buffer, offset + 1);
-    // Here offset is most likely at one index above the read characters because
-    // in `while` in the final iteration before loop breaks the value of offset
-    // is already exceeded by 1 so we only add +1 since index value is ahead by
-    // one so in total we get 2 extra bytes spaces just by +1 ing the new memory
-    // size and 1 byte space to be used for `\0` string terminator another for
-    // `\n` character. (THINK DEEPLY AND RUN AN EXAMPLE TO UNDERSTAND THIS,
-    // QUITE INTERESTING TBH!!!)
-
-    // if we do get a NULL then we leave the old buffer as it is and no need to
-    // call free() as it will erase the stored characters
-    if (new_buffer != NULL) {
-      buffer = new_buffer;
-    }
-  }
-
-  // Add \n as N-1 character and string terminator as last character in read
-  // stream
-  buffer[offset] = '\n';
-  buffer[offset + 1] = '\0';
-  return buffer;
-}
-
-int main(void) {
-  FILE *f = fopen("./pointers4_example.txt", "r");
-  char *line;
-
-  // fgetc automatically tracks the file location using the internal file
-  // pointer in the FILE object. So, that means on every reader() func call
-  // we continue reading sream where last while condition stopped because of a
-  // newline character `\n` encountered.
-  while ((line = reader(f)) != NULL) {
-    printf("%s", line);
-    free(line); // This frees up the buffer memory that is being used to store
-                // read stream for current iteration
-  }
-  fclose(f);
-}
-
-
-
-"""
+    scores, queries_embeddings, documents_embeddings, docs_map = (
+        embed_documents_and_query(
+            queries=["cloud class"],
+            docs=data_docs,
+            model=model,
+            index=index,
+            retriever=retriever,
+        )
+    )

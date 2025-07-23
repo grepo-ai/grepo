@@ -250,6 +250,7 @@ def main():
 def menu(death_count):
     global points
     run = True
+
     while run:
         SCREEN.fill((255, 255, 255))
         font = pygame.font.Font("freesansbold.ttf", 30)
@@ -262,6 +263,7 @@ def menu(death_count):
             scoreRect = score.get_rect()
             scoreRect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50)
             SCREEN.blit(score, scoreRect)
+
         textRect = text.get_rect()
         textRect.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         SCREEN.blit(text, textRect)
@@ -277,15 +279,16 @@ def menu(death_count):
 
 menu(death_count=0)
 
+"""
+class Hello:
+    def __init__(self, a, b):
+        self.a = a
+        self.b = b
 
-# class Hello:
-#     def __init__(self, a, b):
-#         self.a = a
-#         self.b = b
-
-#     def hello_world(self):
-#         return "Hello world"
+    def hello_world(self):
+        return "Hello world"
 
 
-# hey = Hello()
-# hey.hello_world()
+hey = Hello()
+hey.hello_world()
+"""

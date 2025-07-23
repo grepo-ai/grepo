@@ -3,13 +3,18 @@ CODE_SYMBOLS_QUERY_MAP = {
     "classes": """
     (class_definition
 
-       name: (identifier) @class_name
-       body: (
-       	(block
-        	(function_definition) @class_methods
-       ))
-
+       name: (identifier) @class_names
     ) @classes
+
     """,
-    "functions": "",
+    "functions": """
+    ( function_definition
+
+	name: (identifier) @function_names
+	body: (block) @function_blocks
+
+     ) @functions
+
+
+    """,
 }

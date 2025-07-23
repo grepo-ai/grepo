@@ -25,22 +25,26 @@ class CodeWalker:
     def _init_parser(self):
         return Parser(self.language)
 
-    def parse(self, encoded_code: str, single_query: str):
-        # Parses the code and gets the `root` node
-        self.tree = self.parser.parse(encoded_code)
+    def parse(self, encoded_code: str = None, single_query: str = None, node=None):
+        """Parses the code or captures the node for a given query pattern"""
+
+        if encoded_code:
+            self.tree = self.parser.parse(encoded_code)
 
         # If `single_query` provided it takes precedence over multiple queries
-        if single_query:
+        if single_query and not node:
             tree_sitter_query = self.language.query(single_query)
             node_captures = tree_sitter_query.captures(self.tree.root_node)
 
             return node_captures
 
-        else:
-            # TODO handle multiple queries if needed to maybe?
-            pass
+        elif single_query and node:
+            tree_sitter_query = self.language.query(single_query)
+            node_captures = tree_sitter_query.captures(node)
 
-        return
+            return node_captures
+
+        return self.tree
 
     @staticmethod
     def encode_code(

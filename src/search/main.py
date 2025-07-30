@@ -72,21 +72,34 @@ def load_data():
 
     code_4 = """
 
-        from collections import deque
+       from collections import deque
 
-        def s(g, start):
-            "Performs BFS (Breadth First Search) from source to target"
-            v = {start}
-            qd = deque([start])
-            o = []
-            while qd:
-                u = qd.popleft()
-                o.append(u)
-                for w in g.get(u, []):
-                    if w not in v:
-                        v.add(w)
-                        qd.append(w)
-            return o
+       def s(g, start):
+           \\\"""
+           Performs Breadth-First Search (BFS) traversal on a graph from a given start node.
+
+           Parameters:
+               g (dict): Adjacency list representation of the graph.
+                         Keys are nodes; values are lists of neighboring nodes.
+               start: The starting node for BFS traversal.
+
+           Returns:
+               list: List of nodes in the order they are visited during BFS traversal.
+           \\\"""
+           v = {start}            # Set to keep track of visited nodes to avoid revisits (ensures O(1) lookup)
+           qd = deque([start])    # Double-ended queue initialized with the start node (FIFO queue for BFS)
+           o = []                 # Output list to record the order of BFS traversal
+
+           while qd:
+               u = qd.popleft()   # Dequeue the front node for processing
+               o.append(u)        # Record the visited node
+
+               for w in g.get(u, []):  # Get neighbors of the current node `u`; default to empty list if `u` not in graph
+                   if w not in v:      # If neighbor `w` is not visited
+                       v.add(w)        # Mark `w` as visited
+                       qd.append(w)    # Enqueue `w` for future processing
+
+           return o  # Final BFS traversal order
 
     """
 

@@ -186,10 +186,13 @@ def show_commands():
         live_commands.stop()
 
 
-def invoke_agent(buffer):
-    console.print(Padding(f"[#ABABAB]> {buffer}[/]", (1, 0, 0, 2)))
-    a = "Sure let me run this command and see what i can do!"
-    console.print(Padding(a, (1, 0, 0, 2)))
+def invoke_agent(command_bar: Live, buffer: str):
+    console.print(Padding(f"[#ABABAB]> {buffer}[/]", (1, 0, 0, 1)))
+
+    spinner = Spinner("star", text="[#FFC375]Thinking real hard...[/]", style="#FFC375")
+    console.print(Panel(spinner, box=blank_box, padding=(0, 0, 0, 1)))
+    time.sleep(5)
+    console.print(Padding("Done processing", (1, 0, 0, 1)))
 
 
 if __name__ == "__main__":
@@ -219,7 +222,9 @@ if __name__ == "__main__":
                         if not char:
                             continue
 
-                        console.log(char)
+                        # =================== TODO toggle is breaking
+                        # console.log(char)
+
                         last_keystroke = ord(char)
 
                         if (
@@ -255,12 +260,18 @@ if __name__ == "__main__":
 
             if last_keystroke == 3:
                 break
-            else:
-                invoke_agent(buffer)
 
-            # Reset and clear buffer
+            # command_bar.stop()
+            render_buffer = buffer
             buffer = ""
             command_bar.update(render_command_bar(buffer, False))
+
+            invoke_agent(command_bar, render_buffer)
+            # command_bar.start()
+
+            # Reset and clear buffer
+            # buffer = ""
+            # command_bar.update(render_command_bar(buffer, False))
     finally:
         command_bar.stop()
         console.print(Padding("See you soon!", (0, 0, 1, 2)))

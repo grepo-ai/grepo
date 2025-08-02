@@ -1,7 +1,9 @@
 import os
 import sys
 import termios
+import select
 import tty
+import time
 from rich.console import Console
 from rich.align import Align
 from rich.text import Text
@@ -17,6 +19,21 @@ import pyfiglet
 
 console = Console()
 blank_box = Box("    \n" * 8, ascii=True)
+all_commands = ["help", "settings", "search"]
+
+
+# Set initial terminal state as context manager before reading input from stdin
+class GetchRaw:
+    def __init__(self):
+        self.fd = sys.stdin.fileno()
+
+    def __enter__(self):
+        self.old = termios.tcgetattr(self.fd)
+        self.tty_mode = tty.setcbreak(self.fd)
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
 
 
 def render_intro(console):
@@ -65,43 +82,105 @@ def render_command_bar(buffer, is_first_time=True):
     return panel
 
 
-# Read command inputs from terminal
-def getch():
-    fd = sys.stdin.fileno()
-    old_attrs = termios.tcgetattr(fd)
-    try:
-        # tty.setraw(fd) # WOW read why this loc infinite glitched the live refresh panel everytime i keystroked
-        tty.setcbreak(fd)
-        ch = sys.stdin.read(1)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)
-    return ch, ord(ch)
+# Read keystrokes
+def read_keystroke(fd):
+    # tty.setraw(fd) # WOW read why this loc infinite glitched the live refresh panel everytime i keystroked
+
+    rlist, _, _ = select.select([sys.stdin], [], [], 0.02)
+
+    if not rlist:
+        return None
+
+    # Read first byte
+    ch = sys.stdin.read(1)
+
+    # Return normal keystrokes
+    if ch != "\x1b":
+        return ch
+
+    # So we handled normal keystrokes now we know it is possibly an arrow sequence
+    # (arrow keys are sequence of multiple bytes)
+    # so we need to record that sequence (multi-byte) over a time range to make it look like single
+    # logical key i.e arrow
+
+    arrow_key_seq = ch
+
+    seq_time_range = time.monotonic() + 0.05
+    while time.monotonic() < seq_time_range:
+        rlist, _, _ = select.select([sys.stdin], [], [], 0.01)
+
+        next_char = sys.stdin.read(1)
+
+        if not next_char:
+            break
+
+        arrow_key_seq += next_char
+        if arrow_key_seq in ("\x1b[B", "\x1b[A"):
+            break
+        if len(arrow_key_seq) == 6:
+            break
+    return arrow_key_seq
 
 
-# TODO Try this approach spawn another Live region to manage
-# toggle options and post selection return the selected option back to old live region
-# and render the option in the `command bar`
+def render_commands_list(dynamic_selection=None):
+    commands = ["[dim]/help\n[/]", "[dim]/settings\n[/]", "[dim]/search\n[/]"]
 
+    if dynamic_selection is not None:
+        if dynamic_selection < 0:
+            dynamic_selection += 1
 
-def render_commands_list():
-    command_list = "/help\n/settings\n/search\n/agent"
-    return Panel(command_list, box=blank_box, padding=(0, 0, 1, 2))
+        command_index = commands[dynamic_selection].find("/")
+        command = commands[dynamic_selection][command_index:]
+        commands[dynamic_selection] = command[: command.find("[")]
+
+    render_selected_command = "".join(commands)
+
+    return Panel(render_selected_command, box=blank_box, padding=(0, 0, 0, 2))
 
 
 def show_commands():
-    import time
-
     live_commands = Live(
         render_commands_list(),
         refresh_per_second=100,
         console=console,
         transient=False,
     )
+
     live_commands.start()
+
     try:
-        while True:
-            time.sleep(3)
-            live_commands.update(render_commands_list())
+        dynamic_selection = -1
+        with GetchRaw() as getch:
+            while True:
+                char = read_keystroke(getch.fd)
+
+                if not char or char not in ("\x1b[A", "\x1b[B", "\x1b", "\n"):
+                    continue
+
+                if char == "\x1b":  # ESC key
+                    selected_command = None
+                    break
+
+                elif char == "\x1b[B":  # DOWN arrow
+                    dynamic_selection += 1
+
+                elif char == "\x1b[A":  # UP arrow
+                    dynamic_selection -= 1
+
+                live_commands.update(render_commands_list(dynamic_selection))
+
+                # Select this command and bring/export it into main input bar
+                if char == "\n":
+                    if dynamic_selection < 0:
+                        dynamic_selection += 1
+                        selected_command = all_commands[dynamic_selection]
+                        break
+
+                # Reset values to avoid overflow
+                if dynamic_selection == 2 or dynamic_selection == -4:
+                    dynamic_selection = -1
+
+        return selected_command
 
     finally:
         live_commands.stop()
@@ -133,40 +212,46 @@ if __name__ == "__main__":
 
     try:
         while True:
-            while True:
-                try:
-                    char, ord_no = getch()
-                    last_keystroke = ord_no
-
-                    if (
-                        char == "\n" and len(buffer) > 0 and buffer[-1] != "\n"
-                    ):  # `Enter` keystroke
-                        break
-                    elif char == "\x7f":  # `Backspace` keystroke
-                        buffer = buffer[:-1]
-
-                    else:
-                        if (
-                            not buffer and char == "\n"
-                        ):  # Handle repeated `Enter` keystrokes
+            with GetchRaw() as getch:
+                while True:
+                    try:
+                        char = read_keystroke(getch.fd)
+                        if not char:
                             continue
+
+                        console.log(char)
+                        last_keystroke = ord(char)
+
+                        if (
+                            char == "\n" and len(buffer) > 0 and buffer[-1] != "\n"
+                        ):  # `Enter` keystroke
+                            break
+                        elif char == "\x7f":  # `Backspace` keystroke
+                            buffer = buffer[:-1]
+
                         else:
-                            buffer += char
+                            if (
+                                not buffer and char == "\n"
+                            ):  # Handle repeated `Enter` keystrokes
+                                continue
+                            else:
+                                buffer += char
 
-                    if char == "/" and len(buffer) == 1:
-                        command_bar.stop()
-                        show_commands()
-                        # TODO fix bug command bar re-renders cause we are calling update right after it and
-                        # it is refreshing reallly quickly so need to halt live region precicely
-                        # and then render toggle menu below it and then resume live region again post selection from
-                        # toggle menu
-                        command_bar.start()
+                        if char == "/" and len(buffer) == 1:
+                            command_bar.update(render_command_bar(buffer, True))
+                            command_bar.stop()
+                            selected_command = show_commands()
 
-                    command_bar.update(render_command_bar(buffer, True))
+                            if selected_command:
+                                buffer += selected_command
 
-                except KeyboardInterrupt:
-                    last_keystroke = ord("\x03")  # Ctrl + C
-                    break
+                            command_bar.start()
+
+                        command_bar.update(render_command_bar(buffer, True))
+
+                    except KeyboardInterrupt:
+                        last_keystroke = ord("\x03")  # Ctrl + C
+                        break
 
             if last_keystroke == 3:
                 break
@@ -178,4 +263,4 @@ if __name__ == "__main__":
             command_bar.update(render_command_bar(buffer, False))
     finally:
         command_bar.stop()
-        console.print(Padding("See you soon!", (1, 0, 1, 2)))
+        console.print(Padding("See you soon!", (0, 0, 1, 2)))

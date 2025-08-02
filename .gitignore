@@ -198,3 +198,6 @@ cython_debug/
 
 pylate-indexes/
 .venv
+
+# Experiments
+src/rich_experiments.py

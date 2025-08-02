@@ -1,2 +1,4 @@
-if __name__ == "__main__":
-    from code_parser import CodeWalker
+from db_init import BM25db
+
+
+

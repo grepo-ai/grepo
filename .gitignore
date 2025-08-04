@@ -200,4 +200,4 @@ pylate-indexes/
 .venv
 
 # Experiments
-src/rich_experiments.py
+src/cli/rich_experiments.py

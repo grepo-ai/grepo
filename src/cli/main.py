@@ -16,70 +16,14 @@ from rich.padding import Padding
 from rich.box import HEAVY_EDGE, ROUNDED, DOUBLE_EDGE, HEAVY, Box
 import pyfiglet
 
+from src.cli import render_intro, render_command_bar, render_commands_list, GetchRaw
+import threading
+from queue import SimpleQueue
+
 
 console = Console()
 blank_box = Box("    \n" * 8, ascii=True)
 all_commands = ["help", "settings", "search"]
-
-
-# Set initial terminal state as context manager before reading input from stdin
-class GetchRaw:
-    def __init__(self):
-        self.fd = sys.stdin.fileno()
-
-    def __enter__(self):
-        self.old = termios.tcgetattr(self.fd)
-        self.tty_mode = tty.setcbreak(self.fd)
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
-
-
-def render_intro(console):
-    print("\n")
-    text = Text()
-    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#8FA9FF")
-    console.print(text)
-
-    table = Table()
-    table.add_column("url")
-
-    panel = Panel(
-        f"[#FAFAFA] * Welcome to [#ABCAFF]Grepo[/] * [/] \n\n [#969696] cwd: {os.getcwd()}[#969696] \n\n [italic]type /help for help[/italic]",
-        box=HEAVY_EDGE,
-        border_style="#A8C0FF",
-        expand=False,
-    )
-    console.print(panel)
-
-
-def render_command_bar(buffer, is_first_time=True):
-    # Empty buffer shows placeholder text
-    if not buffer and is_first_time:
-        renderable_text = (
-            '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]'
-        )
-        border_style = "#545454"
-
-    # Bash command buffer style
-    elif buffer and buffer[0] == "#":
-        buffer = buffer[1:]
-        renderable_text = f"[#FFD66E]# {buffer}_[/]"
-        border_style = "#FFD66E"
-
-    # Default buffer style
-    else:
-        renderable_text = f"[#69FFB4]> {buffer}_[/]"
-        border_style = "#545454"
-
-    panel = Panel(
-        renderable_text,
-        box=ROUNDED,
-        border_style=border_style,
-        height=3,
-    )
-    return panel
 
 
 # Read keystrokes
@@ -122,25 +66,9 @@ def read_keystroke(fd):
     return arrow_key_seq
 
 
-def render_commands_list(dynamic_selection=None):
-    commands = ["[dim]/help\n[/]", "[dim]/settings\n[/]", "[dim]/search\n[/]"]
-
-    if dynamic_selection is not None:
-        if dynamic_selection < 0:
-            dynamic_selection += 1
-
-        command_index = commands[dynamic_selection].find("/")
-        command = commands[dynamic_selection][command_index:]
-        commands[dynamic_selection] = command[: command.find("[")]
-
-    render_selected_command = "".join(commands)
-
-    return Panel(render_selected_command, box=blank_box, padding=(0, 0, 0, 2))
-
-
 def show_commands():
     live_commands = Live(
-        render_commands_list(),
+        render_commands_list(blank_box),
         refresh_per_second=100,
         console=console,
         transient=False,
@@ -167,7 +95,7 @@ def show_commands():
                 elif char == "\x1b[A":  # UP arrow
                     dynamic_selection -= 1
 
-                live_commands.update(render_commands_list(dynamic_selection))
+                live_commands.update(render_commands_list(blank_box, dynamic_selection))
 
                 # Select this command and bring/export it into main input bar
                 if char == "\n":
@@ -187,12 +115,22 @@ def show_commands():
 
 
 def invoke_agent(command_bar: Live, buffer: str):
-    console.print(Padding(f"[#ABABAB]> {buffer}[/]", (1, 0, 0, 1)))
+    # Past user queries
+    console.print(Padding(f"[#D4D4D4]> {buffer}[/]", (1, 0, 0, 1)))
 
     spinner = Spinner("star", text="[#FFC375]Thinking real hard...[/]", style="#FFC375")
-    console.print(Panel(spinner, box=blank_box, padding=(0, 0, 0, 1)))
-    time.sleep(5)
+
+    new_live = Live(
+        Panel(spinner, box=blank_box, padding=(0, 0, 0, 0)),
+        refresh_per_second=100,
+        console=console,
+        transient=False,
+    )
+    new_live.start()
+    time.sleep(3)
     console.print(Padding("Done processing", (1, 0, 0, 1)))
+    new_live.update("")
+    new_live.stop()
 
 
 if __name__ == "__main__":
@@ -202,7 +140,6 @@ if __name__ == "__main__":
     buffer = ""
     last_keystroke = None
 
-    # Manual start/stop version
     command_bar = Live(
         render_command_bar(buffer),
         refresh_per_second=100,
@@ -213,6 +150,11 @@ if __name__ == "__main__":
     # Live session started
     command_bar.start()
 
+    # Common data store for threads and user inputs
+    buffer_data = ""
+    lock = threading.Lock()
+    query_queue = SimpleQueue()
+
     try:
         while True:
             with GetchRaw() as getch:
@@ -222,14 +164,11 @@ if __name__ == "__main__":
                         if not char:
                             continue
 
-                        # =================== TODO toggle is breaking
-                        # console.log(char)
-
                         last_keystroke = ord(char)
 
                         if (
                             char == "\n" and len(buffer) > 0 and buffer[-1] != "\n"
-                        ):  # `Enter` keystroke
+                        ):  # `Enter` keystroke i.e run the input query
                             break
                         elif char == "\x7f":  # `Backspace` keystroke
                             buffer = buffer[:-1]
@@ -258,20 +197,22 @@ if __name__ == "__main__":
                         last_keystroke = ord("\x03")  # Ctrl + C
                         break
 
+            # `ctrl-c` keystroke
             if last_keystroke == 3:
                 break
 
-            # command_bar.stop()
             render_buffer = buffer
+            command_bar.update(render_command_bar(render_buffer, False))
+            command_bar.update("")
+
+            command_bar.stop()
+            invoke_agent(command_bar, render_buffer)
+            command_bar.start()
+
+            # Reset and clear buffer
             buffer = ""
             command_bar.update(render_command_bar(buffer, False))
 
-            invoke_agent(command_bar, render_buffer)
-            # command_bar.start()
-
-            # Reset and clear buffer
-            # buffer = ""
-            # command_bar.update(render_command_bar(buffer, False))
     finally:
         command_bar.stop()
         console.print(Padding("See you soon!", (0, 0, 1, 2)))

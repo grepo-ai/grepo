@@ -100,19 +100,6 @@ def invoke_agent(command_bar: Live, buffer: str):
     new_live.stop()
 
 
-def bg_query_processing(buffer, stop_event, query_queue, console):
-    console.log("Running thread logic")
-
-    while not stop_event.is_set():
-        while not query_queue.empty():
-            query = query_queue.get()
-            console.log(f"----- {query} -----")
-            time.sleep(3)
-        else:
-            console.log("waiting for next query...")
-            time.sleep(1)
-
-
 if __name__ == "__main__":
     # Welcome screen and (intial settings via arrow keys and toggle -> TODO)
     render_intro(console)

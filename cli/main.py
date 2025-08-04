@@ -16,12 +16,13 @@ from rich.padding import Padding
 from rich.box import HEAVY_EDGE, ROUNDED, DOUBLE_EDGE, HEAVY, Box
 import pyfiglet
 
-from src.cli import (
+from . import (
     render_intro,
     render_command_bar,
     render_commands_list,
     GetchRaw,
     read_keystroke,
+    bg_query_processing,
 )
 import threading
 from queue import SimpleQueue
@@ -81,6 +82,7 @@ def show_commands():
         live_commands.stop()
 
 
+# TODO: Refactor and move this to queue based processing
 def invoke_agent(command_bar: Live, buffer: str):
     # Past user queries
     console.print(Padding(f"[#D4D4D4]> {buffer}[/]", (1, 0, 0, 1)))

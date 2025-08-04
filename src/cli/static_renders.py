@@ -36,9 +36,14 @@ def render_intro(console):
     console.print(panel)
 
 
-def render_command_bar(buffer, is_first_time=True):
+def render_command_bar(buffer=None, is_first_time=True, render_alert=None):
+    # Render any alerts
+    if render_alert:
+        renderable_text = f"[#FF6969]> {render_alert}[/]"
+        border_style = "#545454"
+
     # Empty buffer shows placeholder text
-    if not buffer and is_first_time:
+    elif not buffer and is_first_time:
         renderable_text = (
             '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]'
         )
@@ -50,7 +55,7 @@ def render_command_bar(buffer, is_first_time=True):
         renderable_text = f"[#FFD66E]# {buffer}_[/]"
         border_style = "#FFD66E"
 
-    # Default buffer style
+    # Default input bar style
     else:
         renderable_text = f"[#69FFB4]> {buffer}_[/]"
         border_style = "#545454"

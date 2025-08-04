@@ -16,54 +16,21 @@ from rich.padding import Padding
 from rich.box import HEAVY_EDGE, ROUNDED, DOUBLE_EDGE, HEAVY, Box
 import pyfiglet
 
-from src.cli import render_intro, render_command_bar, render_commands_list, GetchRaw
+from src.cli import (
+    render_intro,
+    render_command_bar,
+    render_commands_list,
+    GetchRaw,
+    read_keystroke,
+)
 import threading
 from queue import SimpleQueue
 
 
+# Intial screen setup and constants
 console = Console()
 blank_box = Box("    \n" * 8, ascii=True)
 all_commands = ["help", "settings", "search"]
-
-
-# Read keystrokes
-def read_keystroke(fd):
-    # tty.setraw(fd) # WOW read why this loc infinite glitched the live refresh panel everytime i keystroked
-
-    rlist, _, _ = select.select([sys.stdin], [], [], 0.02)
-
-    if not rlist:
-        return None
-
-    # Read first byte
-    ch = sys.stdin.read(1)
-
-    # Return normal keystrokes
-    if ch != "\x1b":
-        return ch
-
-    # So we handled normal keystrokes now we know it is possibly an arrow sequence
-    # (arrow keys are sequence of multiple bytes)
-    # so we need to record that sequence (multi-byte) over a time range to make it look like single
-    # logical key i.e arrow
-
-    arrow_key_seq = ch
-
-    seq_time_range = time.monotonic() + 0.05
-    while time.monotonic() < seq_time_range:
-        rlist, _, _ = select.select([sys.stdin], [], [], 0.01)
-
-        next_char = sys.stdin.read(1)
-
-        if not next_char:
-            break
-
-        arrow_key_seq += next_char
-        if arrow_key_seq in ("\x1b[B", "\x1b[A"):
-            break
-        if len(arrow_key_seq) == 6:
-            break
-    return arrow_key_seq
 
 
 def show_commands():
@@ -133,12 +100,37 @@ def invoke_agent(command_bar: Live, buffer: str):
     new_live.stop()
 
 
+def bg_query_processing(buffer, stop_event, query_queue, console):
+    console.log("Running thread logic")
+
+    while not stop_event.is_set():
+        while not query_queue.empty():
+            query = query_queue.get()
+            console.log(f"----- {query} -----")
+            time.sleep(3)
+        else:
+            console.log("waiting for next query...")
+            time.sleep(1)
+
+
 if __name__ == "__main__":
     # Welcome screen and (intial settings via arrow keys and toggle -> TODO)
     render_intro(console)
-
-    buffer = ""
     last_keystroke = None
+
+    # Common for threads and user inputs
+    lock = threading.Lock()
+    query_queue = SimpleQueue()
+    stop_event = threading.Event()
+    buffer = ""
+
+    # Start background daemon thread for processing queries
+    bg_processing_thread = threading.Thread(
+        target=bg_query_processing,
+        args=(buffer, stop_event, query_queue, console),
+        daemon=True,
+    )
+    bg_processing_thread.start()
 
     command_bar = Live(
         render_command_bar(buffer),
@@ -147,13 +139,7 @@ if __name__ == "__main__":
         transient=False,
     )
 
-    # Live session started
     command_bar.start()
-
-    # Common data store for threads and user inputs
-    buffer_data = ""
-    lock = threading.Lock()
-    query_queue = SimpleQueue()
 
     try:
         while True:
@@ -164,50 +150,71 @@ if __name__ == "__main__":
                         if not char:
                             continue
 
+                        # Ignore arrow keys and TODO add other non-printable sequences that might not be required
+                        if len(char) > 1 or char.startswith("\x1b"):
+                            continue
+
                         last_keystroke = ord(char)
 
-                        if (
-                            char == "\n" and len(buffer) > 0 and buffer[-1] != "\n"
-                        ):  # `Enter` keystroke i.e run the input query
+                        # --- Process user's query on `Enter` keystroke ---
+                        if char == "\n" and len(buffer) > 0 and buffer[-1] != "\n":
+                            query_queue.put(buffer)
                             break
+
                         elif char == "\x7f":  # `Backspace` keystroke
                             buffer = buffer[:-1]
 
+                        # --- TODO: Improve how buffer addition is handled and edge cases better (works for now but improve ---
+                        # Handle repeated `Enter` keystrokes
                         else:
-                            if (
-                                not buffer and char == "\n"
-                            ):  # Handle repeated `Enter` keystrokes
+                            if not buffer and char == "\n":
                                 continue
                             else:
                                 buffer += char
 
+                        # Show list of available commands
                         if char == "/" and len(buffer) == 1:
-                            command_bar.update(render_command_bar(buffer, True))
-                            command_bar.stop()
-                            selected_command = show_commands()
+                            if not query_queue.empty():
+                                command_bar.update(
+                                    render_command_bar(
+                                        render_alert="Cannot use / (commands) until your queries have been processed",
+                                    )
+                                )
+                                continue
 
-                            if selected_command:
-                                buffer += selected_command
+                            else:
+                                command_bar.update(
+                                    render_command_bar(
+                                        "",
+                                        True,
+                                    )
+                                )
+                                command_bar.stop()
+                                selected_command = show_commands()
 
-                            command_bar.start()
+                                if selected_command:
+                                    buffer += selected_command
+
+                                command_bar.start()
 
                         command_bar.update(render_command_bar(buffer, True))
 
                     except KeyboardInterrupt:
                         last_keystroke = ord("\x03")  # Ctrl + C
+                        stop_event.set()
                         break
 
-            # `ctrl-c` keystroke
+            # `Ctrl + C` keystroke
             if last_keystroke == 3:
                 break
 
-            render_buffer = buffer
-            command_bar.update(render_command_bar(render_buffer, False))
-            command_bar.update("")
+            # render_buffer = buffer
+            # command_bar.update(render_command_bar(render_buffer, False))
+            # command_bar.update("")
 
-            command_bar.stop()
-            invoke_agent(command_bar, render_buffer)
-            command_bar.start()
+            # command_bar.stop()
+            # invoke_agent(command_bar, render_buffer)
+            # command_bar.start()
 
             # Reset and clear buffer
             buffer = ""

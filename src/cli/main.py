@@ -177,7 +177,7 @@ if __name__ == "__main__":
                             if not query_queue.empty():
                                 command_bar.update(
                                     render_command_bar(
-                                        render_alert="Cannot use / (commands) until your queries have been processed",
+                                        render_alert="Cannot use / (list commands) until your queries have been processed",
                                     )
                                 )
                                 continue

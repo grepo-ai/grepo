@@ -201,3 +201,4 @@ pylate-indexes/
 
 # Experiments
 cli/rich_experiments.py
+cli/rich_exp2.py

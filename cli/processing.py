@@ -1,14 +1,19 @@
 import time
 
 
-def bg_query_processing(buffer, stop_event, query_queue, console):
-    console.log("Running thread logic")
-
+def bg_query_processing(
+    buffer, console, query_queue=None, output_queue=None, lock=None, stop_event=None
+):
     while not stop_event.is_set():
+        # console.log(len(output_queue))
+        # console.log(query_queue.qsize())
+        # console.log("--- background thread ---")
+
         while not query_queue.empty():
             query = query_queue.get()
-            console.log(f"----- {query} -----")
-            time.sleep(3)
+            if query:
+                with lock:
+                    output_queue.append(f"{query}")
+
         else:
-            console.log("waiting for next query...")
             time.sleep(1)

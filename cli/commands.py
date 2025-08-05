@@ -1,20 +1,4 @@
-import os
-import sys
-import termios
-import select
-import tty
-import time
-from rich.console import Console
-from rich.align import Align
-from rich.text import Text
-from rich.live import Live
-from rich.table import Table
 from rich.panel import Panel
-from rich.prompt import Prompt
-from rich.spinner import Spinner
-from rich.padding import Padding
-from rich.box import HEAVY_EDGE, ROUNDED, DOUBLE_EDGE, HEAVY, Box
-import pyfiglet
 
 
 def render_commands_list(blank_box, dynamic_selection=None):

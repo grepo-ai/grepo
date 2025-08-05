@@ -1,11 +1,11 @@
 import os
 from rich.console import Group
 from rich.text import Text
-from rich.table import Table
 from rich.panel import Panel
 from rich.box import HEAVY_EDGE, ROUNDED, SIMPLE
 from rich.spinner import Spinner
 import pyfiglet
+import random
 
 
 def render_intro(console):
@@ -14,11 +14,8 @@ def render_intro(console):
     text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#8FA9FF")
     console.print(text)
 
-    table = Table()
-    table.add_column("url")
-
     panel = Panel(
-        f"[#FAFAFA]   * Welcome to [#ABCAFF]Grepo[/] * [/] \n\n [#969696]  cwd: {os.getcwd()}[#969696] \n\n   [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
+        f"[#FAFAFA]   * Welcome to [#ABCAFF]Grepo[/] * [/] \n\n [#969696]  cwd: {os.getcwd()}[/] \n\n   [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
         box=HEAVY_EDGE,
         border_style="#A8C0FF",
         expand=False,
@@ -60,7 +57,7 @@ class RenderSplits:
         self._previous_buffer = ""
         self.output_queue = output_queue
         self._upper_split_panel = Panel(
-            "How can i help you today?",
+            "[#F35CFF]How can i help you today?[/]",
             box=SIMPLE,
             height=0,
         )
@@ -70,8 +67,11 @@ class RenderSplits:
             border_style="#545454",
             height=3,
         )
-        self.spinner_panel = Spinner("star", text="", style="#FFC375")
-        # [#FFC375]Thinking hard...[/]
+        self.spinner = Panel(
+            "[#969696]* Tip: Add .greporules for custome instructions for Grepo to remember[/]",
+            box=SIMPLE,
+            height=0,
+        )
 
     def update_upper_split(self):
         if self.output_queue and len(self.output_queue) != self._last_log_count:
@@ -96,10 +96,15 @@ class RenderSplits:
         # This is to prevent frequent updates when buffer didnt even change
         self._previous_buffer = buffer
 
-    def update_spinner(self, status_text):
-        self.spinner.text = status_text
+    def update_spinner(self, status_text=None):
+        status_fillers = ["Thinking hard like jelly...", "Chewing GPUs..."]
+
+        if not status_text:
+            status_text = random.choice(status_fillers)
+
+        self.spinner.renderable = Spinner(
+            "star", text=f"[#FFC375]{status_text}[/]", style="#FFC375"
+        )
 
     def __rich__(self):
-        return Group(
-            self._upper_split_panel, self.spinner_panel, self._lower_split_panel
-        )
+        return Group(self._upper_split_panel, self.spinner, self._lower_split_panel)

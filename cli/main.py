@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
     live_region = Live(
         split_screens,
-        refresh_per_second=60,
+        refresh_per_second=20,
         console=console,
         transient=False,
     )
@@ -83,6 +83,7 @@ if __name__ == "__main__":
                         # --- Process user's query on `Enter` keystroke ---
                         if char == "\n" and len(buffer) > 0 and buffer[-1] != "\n":
                             query_queue.put(buffer)
+                            split_screens.update_spinner()
                             break
 
                         elif char == "\x7f":  # `Backspace` keystroke

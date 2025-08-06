@@ -82,7 +82,7 @@ if __name__ == "__main__":
 
                         # --- Process user's query on `Enter` keystroke ---
                         if char == "\n" and len(buffer) > 0 and buffer[-1] != "\n":
-                            query_queue.put(buffer)
+                            query_queue.put(f"> {buffer}")
                             split_screens.update_spinner()
                             break
 

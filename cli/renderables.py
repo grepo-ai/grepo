@@ -2,7 +2,7 @@ import os
 from rich.console import Group
 from rich.text import Text
 from rich.panel import Panel
-from rich.box import HEAVY_EDGE, ROUNDED, SIMPLE
+from rich.box import HEAVY, ROUNDED, SIMPLE
 from rich.spinner import Spinner
 import pyfiglet
 import random
@@ -15,8 +15,8 @@ def render_intro(console):
     console.print(text)
 
     panel = Panel(
-        f"[#FAFAFA]   * Welcome to [#ABCAFF]Grepo[/] * [/] \n\n [#969696]  cwd: {os.getcwd()}[/] \n\n   [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
-        box=HEAVY_EDGE,
+        f"[#FAFAFA]   * Welcome to [#ABCAFF]Grepo[/] * [/] \n\n [#969696]  cwd: {os.getcwd()}[/] \n\n  [#969696] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
+        box=ROUNDED,
         border_style="#A8C0FF",
         expand=False,
         padding=(0, 0, 0, 0),
@@ -68,7 +68,7 @@ class RenderSplits:
             height=3,
         )
         self.spinner = Panel(
-            "[#969696]* Tip: Add .greporules for custome instructions for Grepo to remember[/]",
+            "[#969696]* Tip: Add .greporules for custom instructions for Grepo to remember[/]",
             box=SIMPLE,
             height=0,
         )

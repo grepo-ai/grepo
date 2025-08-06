@@ -1,17 +1,67 @@
-from rich.panel import Panel
+from cli.terminal import GetchRaw, read_keystroke
 
 
-def render_commands_list(blank_box, dynamic_selection=None):
-    commands = ["[dim]/help\n[/]", "[dim]/settings\n[/]", "[dim]/search\n[/]"]
+class Commands:
+    AVAILABLE_MAIN_COMMANDS = ["help", "config", "ask"]
 
-    if dynamic_selection is not None:
-        if dynamic_selection < 0:
-            dynamic_selection += 1
+    def __init__(self, console=None, rendered_regions=None):
+        self.console = console
+        self.rendered_commands_region = rendered_regions
 
-        command_index = commands[dynamic_selection].find("/")
-        command = commands[dynamic_selection][command_index:]
-        commands[dynamic_selection] = command[: command.find("[")]
+    def show(self, type="MAIN"):
+        dynamic_selection = -1
 
-    render_selected_command = "".join(commands)
+        while True:
+            char = read_keystroke()
 
-    return Panel(render_selected_command, box=blank_box, padding=(0, 0, 0, 2))
+            if not char or char not in ("\x1b[A", "\x1b[B", "\x1b", "\n"):
+                continue
+
+            if char == "\x1b":  # ESC key
+                selected_command = None
+                break
+
+            elif char == "\x1b[B":  # DOWN arrow
+                dynamic_selection += 1
+
+            elif char == "\x1b[A":  # UP arrow
+                dynamic_selection -= 1
+
+            self.rendered_commands_region.update_footer_split(
+                dynamic_selection=dynamic_selection
+            )
+
+            # Select this command and pass it to main input buffer
+            if char == "\n":
+                if dynamic_selection < 0:
+                    dynamic_selection += 1
+                    selected_command = self.__class__.AVAILABLE_MAIN_COMMANDS[
+                        dynamic_selection
+                    ]
+                    break
+
+            # Reset values to avoid overflow
+            if dynamic_selection == 2 or dynamic_selection == -4:
+                dynamic_selection = -1
+
+        return selected_command
+
+    @staticmethod
+    def main_commands_selector(dynamic_selection=None):
+        commands = [
+            "[dim]/help\n[/]",
+            "[dim]/config\n[/]",
+            "[dim]/ask\n[/]",
+        ]
+
+        if dynamic_selection is not None:
+            if dynamic_selection < 0:
+                dynamic_selection += 1
+
+            command_index = commands[dynamic_selection].find("/")
+            command = commands[dynamic_selection][command_index:]
+            commands[dynamic_selection] = command[: command.find("[")]
+
+        selected_command = "".join(commands)
+
+        return selected_command

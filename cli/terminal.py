@@ -20,7 +20,7 @@ class GetchRaw:
 
 
 # Read keystrokes from user
-def read_keystroke(fd):
+def read_keystroke():
     # tty.setraw(fd) # WOW read why this loc infinite glitched the live refresh panel everytime i keystroked
 
     rlist, _, _ = select.select([sys.stdin], [], [], 0.02)
@@ -31,7 +31,7 @@ def read_keystroke(fd):
     # Read first byte
     ch = sys.stdin.read(1)
 
-    # Return normal keystrokes
+    # Return non-sequence keystrokes i.e single char
     if ch != "\x1b":
         return ch
 

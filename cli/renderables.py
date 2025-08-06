@@ -2,10 +2,12 @@ import os
 from rich.console import Group
 from rich.text import Text
 from rich.panel import Panel
-from rich.box import HEAVY, ROUNDED, SIMPLE
+from rich.box import Box
+from rich.box import ROUNDED, SIMPLE
 from rich.spinner import Spinner
 import pyfiglet
 import random
+from cli.commands import Commands
 
 
 def render_intro(console):
@@ -52,10 +54,13 @@ def input_render_styles(buffer=None, is_first_time=True, render_alert=None):
 
 
 class RenderSplits:
-    def __init__(self, output_queue, blank_box):
+    def __init__(self, output_queue, lock):
+        self.blank_box = Box("    \n" * 8, ascii=True)
+        self.lock = lock
         self._last_log_count = 0
         self._previous_buffer = ""
         self.output_queue = output_queue
+        self._log_history = ""
         self._upper_split_panel = Panel(
             "[#F35CFF]How can i help you today?[/]",
             box=SIMPLE,
@@ -73,9 +78,23 @@ class RenderSplits:
             height=0,
         )
 
+        self._footer_split_panel = Panel("", box=SIMPLE, height=8)
+
     def update_upper_split(self):
+        import time
+
         if self.output_queue and len(self.output_queue) != self._last_log_count:
-            render_logs = "\n".join(self.output_queue)
+            while self.output_queue:
+                log_message = self.output_queue.popleft()
+                self._log_history += f"{log_message}\n"
+                self.update_spinner(spin_it=True)
+
+                # TODO: Remove this when integrating agent flow
+                time.sleep(2)
+
+            # Render the logs obtained until now
+            render_logs = self._log_history
+
             self._upper_split_panel.renderable = f"[#CFCFCF]{render_logs}[/]"
             # TODO add dynamic re-sizing and auto-scrolling logic
             self._upper_split_panel.height = 5
@@ -96,15 +115,39 @@ class RenderSplits:
         # This is to prevent frequent updates when buffer didnt even change
         self._previous_buffer = buffer
 
-    def update_spinner(self, status_text=None):
+    def update_spinner(self, spin_it=True, status_text=None):
         status_fillers = ["Thinking hard like jelly...", "Chewing GPUs..."]
 
         if not status_text:
             status_text = random.choice(status_fillers)
 
-        self.spinner.renderable = Spinner(
-            "star", text=f"[#FFC375]{status_text}[/]", style="#FFC375"
-        )
+        if spin_it:
+            self.spinner.renderable = Spinner(
+                "star", text=f"[#FFC375]{status_text}[/]", style="#FFC375"
+            )
+        else:
+            self.spinner.renderable = (
+                "[#969696]Let me know what else you need help with.[/]"
+            )
+
+    def update_footer_split(self, **kwargs):
+        dynamic_selection = kwargs.get("dynamic_selection", None)
+        list_all_commands = kwargs.get("list_all_commands", False)
+
+        if list_all_commands:
+            self._footer_split_panel.renderable = Commands.main_commands_selector()
+
+        elif dynamic_selection is not None:
+            self._footer_split_panel.renderable = Commands.main_commands_selector(
+                dynamic_selection
+            )
+        else:
+            self._footer_split_panel.renderable = ""
 
     def __rich__(self):
-        return Group(self._upper_split_panel, self.spinner, self._lower_split_panel)
+        return Group(
+            self._upper_split_panel,
+            self.spinner,
+            self._lower_split_panel,
+            self._footer_split_panel,
+        )

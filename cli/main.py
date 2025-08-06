@@ -2,8 +2,8 @@ import threading
 from queue import SimpleQueue
 from rich.console import Console
 from rich.live import Live
-from rich.padding import Padding
 from collections import deque
+
 
 from cli.commands import Commands
 from cli.terminal import GetchRaw, read_keystroke
@@ -129,4 +129,3 @@ if __name__ == "__main__":
 
     finally:
         live_region.stop()
-        # console.print(Padding("See you soon!", (0, 0, 1, 2)))

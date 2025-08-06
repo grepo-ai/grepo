@@ -64,4 +64,7 @@ class Commands:
 
         selected_command = "".join(commands)
 
-        return selected_command
+        return (
+            selected_command
+            + "[dim]\n Press ↑/↓ to move up/down • `Enter` to select • `Esc` to exit[/]"
+        )

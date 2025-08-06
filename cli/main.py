@@ -118,6 +118,8 @@ if __name__ == "__main__":
 
                 # Ctrl-C keystroke
                 except KeyboardInterrupt:
+                    split_screens.update_footer_split(exit_screen=True)
+                    split_screens.update_lower_split(console, "")
                     stop_event.set()
                     break
 
@@ -127,4 +129,4 @@ if __name__ == "__main__":
 
     finally:
         live_region.stop()
-        console.print(Padding("See you soon!", (0, 0, 1, 2)))
+        # console.print(Padding("See you soon!", (0, 0, 1, 2)))

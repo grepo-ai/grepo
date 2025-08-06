@@ -1,4 +1,4 @@
-from cli.terminal import GetchRaw, read_keystroke
+from cli.terminal import read_keystroke
 
 
 class Commands:
@@ -49,18 +49,18 @@ class Commands:
     @staticmethod
     def main_commands_selector(dynamic_selection=None):
         commands = [
-            "[dim]/help\n[/]",
-            "[dim]/config\n[/]",
-            "[dim]/ask\n[/]",
+            "[dim] /help\n[/]",
+            "[dim] /config\n[/]",
+            "[dim] /ask\n[/]",
         ]
 
         if dynamic_selection is not None:
             if dynamic_selection < 0:
                 dynamic_selection += 1
 
-            command_index = commands[dynamic_selection].find("/")
-            command = commands[dynamic_selection][command_index:]
-            commands[dynamic_selection] = command[: command.find("[")]
+            command_index = commands[dynamic_selection].find("]")
+            command = commands[dynamic_selection][command_index + 1 :]
+            commands[dynamic_selection] = f"[#E896FF]{command[: command.find('[')]}[/]"
 
         selected_command = "".join(commands)
 

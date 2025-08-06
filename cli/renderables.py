@@ -13,11 +13,11 @@ from cli.commands import Commands
 def render_intro(console):
     console.print("\n")
     text = Text()
-    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#8FA9FF")
+    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#85A1FF")
     console.print(text)
 
     panel = Panel(
-        f"[#FAFAFA]   * Welcome to [#ABCAFF]Grepo[/] * [/] \n\n [#969696]  cwd: {os.getcwd()}[/] \n\n  [#969696] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
+        f"[#FAFAFA]   * Welcome to [#A3B9FF]Grepo[/] * [/] \n\n [#969696]  cwd: {os.getcwd()}[/] \n\n  [#969696] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
         box=ROUNDED,
         border_style="#A8C0FF",
         expand=False,
@@ -133,6 +133,7 @@ class RenderSplits:
     def update_footer_split(self, **kwargs):
         dynamic_selection = kwargs.get("dynamic_selection", None)
         list_all_commands = kwargs.get("list_all_commands", False)
+        exit_screen = kwargs.get("exit_screen", False)
 
         if list_all_commands:
             self._footer_split_panel.renderable = Commands.main_commands_selector()
@@ -141,8 +142,12 @@ class RenderSplits:
             self._footer_split_panel.renderable = Commands.main_commands_selector(
                 dynamic_selection
             )
+        elif exit_screen:
+            self._footer_split_panel.renderable = """<TODO: show actual usage stats>\nInput Token usage: 1000\nTotal cost: $0.52\nModels used: Kimi-2, Mixtral"""
+            self._footer_split_panel.height = 6
         else:
             self._footer_split_panel.renderable = ""
+            self._footer_split_panel.height = 0
 
     def __rich__(self):
         return Group(

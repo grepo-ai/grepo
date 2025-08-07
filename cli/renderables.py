@@ -78,7 +78,9 @@ class RenderSplits:
             height=0,
         )
 
-        self._footer_split_panel = Panel("", box=SIMPLE, height=8)
+        self._footer_split_panel = Panel(
+            "[dim]Press ? for shortcuts[/]", box=SIMPLE, height=0
+        )
 
     def update_upper_split(self):
         import time
@@ -137,16 +139,20 @@ class RenderSplits:
 
         if list_all_commands:
             self._footer_split_panel.renderable = Commands.main_commands_selector()
+            self._footer_split_panel.height = 8
 
         elif dynamic_selection is not None:
             self._footer_split_panel.renderable = Commands.main_commands_selector(
                 dynamic_selection
             )
+            self._footer_split_panel.height = 8
+
         elif exit_screen:
             self._footer_split_panel.renderable = """<TODO: show actual usage stats>\nInput Token usage: 1000\nTotal cost: $0.52\nModels used: Kimi-2, Mixtral"""
-            self._footer_split_panel.height = 6
+            self._footer_split_panel.height = 8
+
         elif blank:
-            self._footer_split_panel.renderable = ""
+            self._footer_split_panel.renderable = "[dim]Press ? for shortcuts[/]"
             self._footer_split_panel.height = 0
 
     def __rich__(self):

@@ -130,7 +130,7 @@ class RenderSplits:
                 "[#969696]Let me know what else you need help with.[/]"
             )
 
-    def update_footer_split(self, **kwargs):
+    def update_footer_split(self, blank=False, **kwargs):
         dynamic_selection = kwargs.get("dynamic_selection", None)
         list_all_commands = kwargs.get("list_all_commands", False)
         exit_screen = kwargs.get("exit_screen", False)
@@ -145,7 +145,7 @@ class RenderSplits:
         elif exit_screen:
             self._footer_split_panel.renderable = """<TODO: show actual usage stats>\nInput Token usage: 1000\nTotal cost: $0.52\nModels used: Kimi-2, Mixtral"""
             self._footer_split_panel.height = 6
-        else:
+        elif blank:
             self._footer_split_panel.renderable = ""
             self._footer_split_panel.height = 0
 

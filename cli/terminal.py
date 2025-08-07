@@ -21,14 +21,9 @@ class GetchRaw:
 
 # Read keystrokes from user
 def read_keystroke():
-    # tty.setraw(fd) # WOW read why this loc infinite glitched the live refresh panel everytime i keystroked
-
     rlist, _, _ = select.select([sys.stdin], [], [], 0.02)
-
     if not rlist:
         return None
-
-    # Read first byte
     ch = sys.stdin.read(1)
 
     # Return non-sequence keystrokes i.e single char
@@ -41,14 +36,16 @@ def read_keystroke():
     # logical key i.e arrow key (up/down/left/right)
 
     arrow_key_seq = ch
+    seq_time_range = time.monotonic() + 0.03
 
-    seq_time_range = time.monotonic() + 0.05
     while time.monotonic() < seq_time_range:
         rlist, _, _ = select.select([sys.stdin], [], [], 0.01)
 
         next_char = sys.stdin.read(1)
-
         if not next_char:
+            break
+
+        if next_char == "\x1b":
             break
 
         arrow_key_seq += next_char
@@ -56,11 +53,9 @@ def read_keystroke():
         # Check if complete sequence has been formed for UP and DOWN arrow keys
         if arrow_key_seq in ("\x1b[B", "\x1b[A"):
             break
-
         elif arrow_key_seq in ("\x1b[C", "\x1b[D"):
+            arrow_key_seq = None
             continue
-
-        # Hard check for any combination arrow sequence
         if len(arrow_key_seq) == 6:
             break
 

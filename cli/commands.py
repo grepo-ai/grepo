@@ -43,10 +43,13 @@ class Commands:
                 ]
                 return selected_command
 
-            # TODO: Add more non-printable escape sequences that are not required to be processed
+            # TODO: Add support for more non-printable escape sequences that are not required to be processed
             # For all keystrokes except arrow keys just return the char and add to main buffer
-            elif char not in ("\x1b[B", "\x1b[A", "\x1b[C", "\x1b[D"):
+            elif char not in ("\x1b[B", "\x1b[A", "\x1b[C", "\x1b[D", "\x7f"):
                 return char
+
+            elif char == "\x7f":  # `Backspace` keystroke
+                return char[:-1]
 
     @staticmethod
     def main_commands_selector(dynamic_selection=None):

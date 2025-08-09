@@ -9,17 +9,20 @@ import pyfiglet
 import random
 from cli.commands import Commands
 
+# 69FFB4
+# BDFF91
+
 
 def render_intro(console):
     console.print("\n")
     text = Text()
-    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#85A1FF")
+    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#FFD66E")
     console.print(text)
 
     panel = Panel(
-        f"[#FAFAFA]   * Welcome to [#A3B9FF]Grepo[/] * [/] \n\n [#969696]  cwd: {os.getcwd()}[/] \n\n  [#969696] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
+        f"[#FAFAFA]   * Welcome to [#FFD66E]Grepo[/] * [/] \n\n [#969696]  cwd: {os.getcwd()}[/] \n\n  [#969696] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
         box=ROUNDED,
-        border_style="#A8C0FF",
+        border_style="#FFD66E",
         expand=False,
         padding=(0, 0, 0, 0),
     )
@@ -30,14 +33,14 @@ def input_render_styles(buffer=None, is_first_time=True, render_alert=None):
     # Render any alerts
     if render_alert:
         renderable_text = f"[#FF6969]> {render_alert}[/]"
-        border_style = "#545454"
+        border_style = "#FF6969"
 
     # Empty buffer shows placeholder text
     elif not buffer and is_first_time:
         renderable_text = (
             '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]'
         )
-        border_style = "#545454"
+        border_style = "#69FFB4"
 
     # Bash command buffer style
     elif buffer and buffer[0] == "#":
@@ -48,7 +51,7 @@ def input_render_styles(buffer=None, is_first_time=True, render_alert=None):
     # Default input bar style
     else:
         renderable_text = f"[#69FFB4]> {buffer}_[/]"
-        border_style = "#545454"
+        border_style = "#69FFB4"
 
     return renderable_text, border_style
 
@@ -125,7 +128,7 @@ class RenderSplits:
 
         if spin_it:
             self.spinner.renderable = Spinner(
-                "star", text=f"[#FFC375]{status_text}[/]", style="#FFC375"
+                "star", text=f"[#FC5CFF]{status_text}[/]", style="#FC5CFF"
             )
         else:
             self.spinner.renderable = (

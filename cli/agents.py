@@ -60,14 +60,15 @@ def grep(query: str) -> Tuple[int, str, str]:
 
     file_paths = glob.glob(f"{os.getcwd()}/**/*.py", recursive=True)
 
+    query_matches = []
     for path in file_paths:
         with open(path, "r") as file:
             for line_number, line in enumerate(file, 1):
                 result = re.search(query, line)
                 if result:
-                    return line_number, path, line
+                    query_matches.append((line_number, os.path.basename(path), line))
 
-    return
+    return query_matches
 
 
 tools = [get_dir_path, list_files, read_file, grep]
@@ -104,7 +105,8 @@ def assistant(state: AgentState):
     """
 
     sys_msg = SystemMessage(
-        content=f"You task is to find the relevant line that matches with the original query and return that line. \n Make use of the following tools to prepare a final answer. :{tool_description}\n"
+        content=f"""You task is to find all the relevant lines that matches with the original query and return those lines.
+        If no matches are find then maybe it might be because of escape sequences or characters so fix those as well. \n Make use of the following tools to prepare a final answer. :{tool_description}\n"""
     )
 
     return {"messages": [model_with_tools.invoke([sys_msg] + state["messages"])]}

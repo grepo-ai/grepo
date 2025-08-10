@@ -9,14 +9,11 @@ import pyfiglet
 import random
 from cli.commands import Commands
 
-# 69FFB4
-# BDFF91
-
 
 def render_intro(console):
     console.print("\n")
     text = Text()
-    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#FFD66E")
+    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#FFF9E5")
     console.print(text)
 
     panel = Panel(

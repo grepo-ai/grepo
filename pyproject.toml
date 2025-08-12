@@ -3,9 +3,11 @@ name = "grepo"
 version = "0.1.0"
 requires-python = ">=3.10.18"
 dependencies = [
-    "ipython>=8.37.0",
+    "deepdiff>=8.6.0",
+    "diff-match-patch>=20241021",
     "langchain-anthropic>=0.3.18",
     "langgraph>=0.6.4",
+    "langgraph-checkpoint-sqlite>=2.0.11",
     "pyfiglet>=1.0.3",
     "python-dotenv>=1.1.1",
     "rich>=14.1.0",

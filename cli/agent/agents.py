@@ -9,7 +9,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage
+from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, AIMessage
 
 # from IPython.display import Image, display
 from dotenv import load_dotenv
@@ -18,7 +18,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Define model to use
-anthropic_model = ChatAnthropic(model="claude-sonnet-4-20250514")
+anthropic_model = ChatAnthropic(
+    model="claude-sonnet-4-20250514",
+    max_tokens=64000,
+    thinking={"type": "enabled", "budget_tokens": 2000},
+)
 
 
 class AgentState(TypedDict):
@@ -106,13 +110,21 @@ def assistant(state: AgentState):
 
     sys_msg = SystemMessage(
         content=f"""You task is to find all the relevant lines that matches with the original query and return those lines.
-        If no matches are find then maybe it might be because of escape sequences or characters so fix those as well. \n Make use of the following tools to prepare a final answer. :{tool_description}\n"""
+        If no matches are find then maybe it might be because of escape sequences or characters so fix those as well. \n Make use of the following tools to prepare a final answer. :{tool_description}\n""",
+        additional_kwargs={"cache_control": {"type": "ephemeral"}},
     )
 
     return {"messages": [model_with_tools.invoke([sys_msg] + state["messages"])]}
 
 
 if __name__ == "__main__":
+    from rich.console import Console
+    from rich.tree import Tree
+
+    # Rich formatting
+    console = Console()
+    tree = Tree("[#FF66FA]🔘 Search[/]")
+
     # Build graph
     graph_builder = StateGraph(AgentState)
 
@@ -130,34 +142,37 @@ if __name__ == "__main__":
     # print(display(Image(compiled_graph.get_graph(xray=True).draw_mermaid_png())))
 
     # Test run
-    user_input = input("> ")
+    user_input = console.input("[#69FFB4]> [/]")
     messages = [HumanMessage(content=user_input)]
 
-    from rich.console import Console
-    from rich.tree import Tree
-
-    console = Console()
-    tree = Tree("[#FF66FA]🔘 Search[/]")
-
     for chunk in agent.stream(
-        config={"recursion_limit": 30},
+        config={"recursion_limit": 50},
         input={"messages": messages},
         stream_mode="updates",
     ):
+        # console.print(chunk)
+        # console.print("------------")
         # AI message
         if chunk.get("assistant"):
-            message = chunk["assistant"]["messages"][0].content
-            if isinstance(message, list):
-                message = chunk["assistant"]["messages"][0].content[0]["text"]
-                console.print(f"[#CFCFCF]{message}[/]")
-
-            else:
+            message = chunk["assistant"]["messages"][0]
+            if isinstance(message, AIMessage):
                 message = chunk["assistant"]["messages"][0].content
-                console.print(f"[#CFCFCF]{message}[/]")
+                if isinstance(message, list) and len(message) > 1:
+                    if message[1].get("text") is not None:
+                        console.print(
+                            f"[#CFCFCF]{chunk['assistant']['messages'][0].content[1]['text']}[/]"
+                        )
+                    else:
+                        console.print(
+                            f"[#CFCFCF]{chunk['assistant']['messages'][0].content[0]['text']}[/]"
+                        )
+
+                else:
+                    message = chunk["assistant"]["messages"][0].content
+                    console.print(f"[#CFCFCF]{message}[/]")
 
         # Print tool message
         elif chunk.get("tools"):
-            # console.print("[#A3B9FF] Tool update:[/]")
             tool_message = chunk["tools"]["messages"][0].content
 
             if tool_message != "null":

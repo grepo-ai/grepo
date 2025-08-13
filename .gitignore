@@ -206,3 +206,5 @@ cli/rich_exp2.py
 
 # Grepo
 grepo.db
+grepo.db-shm
+grepo.db-wal

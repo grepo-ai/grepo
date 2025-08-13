@@ -230,8 +230,11 @@ def rerank(scores, queries_embeddings, documents_embeddings, docs_map):
     return ranked_resp
 
 
+def edit_file(a: str, b: str):
+    return
+
+
 if __name__ == "__main__":
-    print(" --- ### Starting the retrieval process ### --- ")
     import time
 
     while True:

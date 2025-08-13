@@ -1,4 +1,4 @@
-from cli.terminal import read_keystroke
+from src.cli.terminal import read_keystroke
 
 
 class Commands:

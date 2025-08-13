@@ -2,8 +2,9 @@ import os
 import glob
 import re
 import uuid
-from typing import Annotated, List, Tuple
+from typing import Annotated
 from typing_extensions import TypedDict
+
 
 from langchain_anthropic import ChatAnthropic
 from langgraph.graph import StateGraph, START, END
@@ -16,27 +17,21 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command, interrupt
 from operator import add
-
-
 import sqlite3
 
 
-# from IPython.display import Image, display
 from dotenv import load_dotenv
-from agent.tools import list_files, read_file, grep
+from agent.tools import list_files, read_file, grep, edit_file
+from agent.state import GlobalState
 
-
+# Load env vars
 load_dotenv()
+
 
 # Declare a checkpoint
 checkpointer = SqliteSaver(sqlite3.connect("grepo.db", check_same_thread=False))
 
 
-class GlobalState(AgentState):
-    changed_code: Annotated[List[Tuple], add]
-
-
-# Define model to use
 # # ---- TODO: learn how to integrate prompt caching
 anthropic_model = ChatAnthropic(
     model="claude-sonnet-4-20250514",
@@ -45,15 +40,26 @@ anthropic_model = ChatAnthropic(
 )
 
 
+# Create system prompt along with pormpt caching TODO: Learn more about best caching techniques to lower token burn
+system_prompt = SystemMessage(
+    content=[
+        {
+            "text": """You are an experienced software engineer and your job is to help by answering code related questions,
+            explain code and generate optimised and bug free and linted code to help answer the user's query also ensure code follows language specific best practices.
+            Make the best use of the tools available at your disposal namely list files tool, read file tool, grep tool and edit file tool to apply the code change.""",
+            "type": "text",
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
+)
+
 # Create a ReAct agent
 agent = create_react_agent(
     anthropic_model,
-    tools=[list_files, read_file, grep],
+    tools=[list_files, read_file, grep, edit_file],
     state_schema=GlobalState,
     checkpointer=checkpointer,
-    prompt="""You are an experienced software engineer and your job is to help by answering code related questions,
-    explain code and generate optimised and bug free and linted code to help the user also ensure code follows language specific best practices.
-    Make the best use of the tools available at your disposal namely list files tool, read file tool, grep tool for finding a match across files and edit file tool to apply the code change.""",
+    prompt=system_prompt,
 )
 
 
@@ -83,7 +89,6 @@ if __name__ == "__main__":
 
     session_uuid = console.input("Enter a session uuid to resume conversation: ")
     if not session_uuid:
-        console.print(session_uuid)
         session_uuid = generate_session_uuid()
 
     graph_config["configurable"].update({"thread_id": session_uuid})
@@ -96,6 +101,38 @@ if __name__ == "__main__":
         running_agent = agent.stream(
             config=graph_config,
             input={"messages": messages},
+            stream_mode="updates",
+        )
+
+        for chunk in running_agent:
+            print(chunk)
+
+            if chunk.get("agent"):
+                ai_message = chunk["agent"]["messages"][0].content
+
+                if isinstance(ai_message, list) and len(ai_message) > 1:
+                    if ai_message[1].get("text") is not None:
+                        console.print(
+                            f"[#CFCFCF]{chunk['agent']['messages'][0].content[1]['text']}[/]"
+                        )
+                else:
+                    console.print(
+                        f"[#CFCFCF]{chunk['agent']['messages'][0].content}[/]"
+                    )
+
+            elif chunk.get("tools"):
+                tool_message = chunk["tools"]["messages"][0].content
+                tree.add(tool_message)
+
+        print("------- Graph stopped for human approval ----")
+        # print(running_agent.get_state(graph_config))
+
+        human_approval = input("Enter Yes/No to accept/reject:")
+        print("----- Resuming where graph stopped execution ----")
+
+        running_agent = agent.stream(
+            Command(resume={"option": human_approval}),
+            config=graph_config,
             stream_mode="updates",
         )
 
@@ -117,5 +154,6 @@ if __name__ == "__main__":
                 tool_message = chunk["tools"]["messages"][0].content
                 tree.add(tool_message)
 
+
 # Session uuids
-# 54b8f7a3395f4eadaa7f787406100b04
+# a66d406aace2442a8a335caad837e20e

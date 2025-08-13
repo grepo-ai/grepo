@@ -7,7 +7,7 @@ from rich.box import ROUNDED, SIMPLE
 from rich.spinner import Spinner
 import pyfiglet
 import random
-from cli.commands import Commands
+from src.cli.commands import Commands
 
 
 def render_intro(console):

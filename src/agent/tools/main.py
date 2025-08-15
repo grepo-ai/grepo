@@ -8,9 +8,10 @@ from langchain_core.tools import tool, InjectedToolCallId
 from langchain_core.messages import ToolMessage
 from langgraph.prebuilt import InjectedState
 
-from src.cli.agent.state import GlobalState
+from src.agent.state import GlobalState
 from langgraph.types import Command, interrupt
 from agent.tools.tools_prompts import EDIT_TOOL_DESCRIPTION
+from agent.utils import apply_generated_code
 
 
 @tool
@@ -60,25 +61,17 @@ def edit_file(
 ) -> Command:
     print(" --- entering approval before making an edit ---")
     human_approval = interrupt({"generated_code": generated_code})
-    code_diff = None
 
     if human_approval["option"].lower() in ("yes", "y"):
-        print(file_path)
-        print("--------")
-        print(generated_code)
-
-        with open(file_path, "r+") as file:
-            file.write(generated_code)
-        # TODO: Write edit logic complety
+        apply_generated_code(file_path, generated_code)
 
         update_data = {
-            "changed_code": generated_code,
             "messages": [
                 ToolMessage(
                     f"Edited the file successfully and the generated code was accepted {file_path}",
                     tool_call_id=tool_call_id,
                 )
-            ],
+            ]
         }
 
         return Command(update=update_data)

@@ -16,7 +16,8 @@ def create_grepo_tables(cursor):
         start_line INTEGER,
         end_line INTEGER,
         meta_info TEXT NOT NULL,
-        hash TEXT NOT NULL
+        hash TEXT,
+        merkle_root TEXT
         ) STRICT;
 
         """)
@@ -30,7 +31,9 @@ def create_grepo_tables(cursor):
         start_line INTEGER,
         end_line INTEGER,
         meta_info TEXT NOT NULL,
-        hash TEXT NOT NULL
+        hash TEXT,
+        merkle_root TEXT
+
 
         FOREIGN KEY (class_id)
             REFERENCES classes(id)
@@ -49,7 +52,8 @@ def create_grepo_tables(cursor):
         start_line INTEGER,
         end_line INTEGER,
         meta_info TEXT NOT NULL,
-        hash TEXT NOT NULL
+        hash TEXT,
+        merkle_root TEXT
         ) STRICT;
 
         """)

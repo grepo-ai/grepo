@@ -2,12 +2,12 @@ import os
 import glob
 import re
 import uuid
-from typing import Annotated
+from typing import Annotated, Union
 from typing_extensions import TypedDict
-
 
 from langchain_anthropic import ChatAnthropic
 from langgraph.graph import StateGraph, START, END
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph.message import add_messages
 from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode, tools_condition, create_react_agent
@@ -23,90 +23,119 @@ import sqlite3
 from dotenv import load_dotenv
 from agent.tools import list_files, read_file, grep, edit_file
 from agent.state import GlobalState
+from agent.utils import get_checkpointer, generate_session_uuid
+from agent.llm import LLMInterface
 
-# Load env vars
+
 load_dotenv()
 
 
-# Declare a checkpoint
-checkpointer = SqliteSaver(sqlite3.connect("grepo.db", check_same_thread=False))
+class Agent:
+    def __init__(
+        self,
+        model,
+        tools: list,
+        schema,
+        checkpointer,
+        system_prompt: str,
+        stream_mode: Union[str, list],
+        config: dict = {},
+    ):  # TODO: complete type hints for class
+        self.model = model
+        self.system_prompt = system_prompt
+        self.tools = tools
+        self.state_schema = schema
+        self.stream_mode = stream_mode
+        self.checkpointer = checkpointer
+        self._config = config
+        self._compiled_graph: CompiledStateGraph = None
+
+    @property
+    def config(self):
+        return self._config
+
+    @property
+    def agent_state(self):
+        return self._compiled_graph
+
+    def _create(self):
+        self._compiled_graph = create_react_agent(
+            self.model,
+            tools=self.tools,
+            state_schema=self.state_schema,
+            checkpointer=self.checkpointer,
+            prompt=self.system_prompt,
+        )
+
+        return self._compiled_graph
+
+    def stream(self, input):
+        # Create and agent with provided config
+        live_agent = self._create()
+
+        # Returns a new generator on each new invocation of user input
+        # else simply use the generator object to get stream updates
+        return live_agent.stream(
+            input=input, config=self._config, stream_mode=self.stream_mode
+        )
 
 
-# # ---- TODO: learn how to integrate prompt caching
-anthropic_model = ChatAnthropic(
-    model="claude-sonnet-4-20250514",
-    max_tokens=64000,
-    thinking={"type": "enabled", "budget_tokens": 2000},
-)
+# --------------------------------------------------- #
 
 
-# Create system prompt along with pormpt caching TODO: Learn more about best caching techniques to lower token burn
-system_prompt = SystemMessage(
-    content=[
-        {
-            "text": """You are an experienced software engineer and your job is to help by answering code related questions,
-            explain code and generate optimised and bug free and linted code to help answer the user's query also ensure code follows language specific best practices.
-            Make the best use of the tools available at your disposal namely list files tool, read file tool, grep tool and edit file tool to apply the code change.""",
-            "type": "text",
-            "cache_control": {"type": "ephemeral"},
-        }
-    ]
-)
-
-# Create a ReAct agent
-agent = create_react_agent(
-    anthropic_model,
-    tools=[list_files, read_file, grep, edit_file],
-    state_schema=GlobalState,
-    checkpointer=checkpointer,
-    prompt=system_prompt,
-)
-
-
-# Create chat sessions
-def generate_session_uuid():
-    thread_uuid = uuid.uuid4().hex
-    print(f"------ New session uuid {thread_uuid} ----")
-    return thread_uuid
+# --------------------------------------------------------- #
+# ------(TODO: temp) Agents will be called from CLI ------- #
+# --------------------------------------------------------- #
 
 
 if __name__ == "__main__":
     from rich.console import Console
     from rich.tree import Tree
 
-    # BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    # print(f"Project base directory: {BASE_DIR}")
-
-    # Rich formatting
+    # --- Text formatting ---
     console = Console()
     tree = Tree("[#FF66FA]> Search[/]")
 
-    # Graph config
-    graph_config = {
-        "configurable": {"thread_id": ""},
-        "recursion_limit": 50,
-    }
+    # --- Initialise LLM client ---
+    llm_client = LLMInterface(llm_provider="anthropic")
 
+    system_prompt = llm_client.get_system_prompt(
+        prompt="""You are an experienced software engineer and your job is to help by answering code related questions,
+    explain code and generate optimised and bug free and linted code to help answer the user's query also ensure code follows language specific best practices.
+    Make the best use of the tools available at your disposal namely list files tool, read file tool, grep tool and edit file tool to apply the code change."""
+    )
+
+    # --- Check if user need to resume old session or start new ---
     session_uuid = console.input("Enter a session uuid to resume conversation: ")
     if not session_uuid:
         session_uuid = generate_session_uuid()
 
-    graph_config["configurable"].update({"thread_id": session_uuid})
+    agent_config = {
+        "configurable": {"thread_id": session_uuid},
+        "recursion_limit": 50,
+    }
+
+    # --- Create an Agent ---
+    agent = Agent(
+        model=llm_client.client(),
+        tools=[list_files, read_file, grep, edit_file],
+        schema=GlobalState,
+        checkpointer=get_checkpointer(),
+        system_prompt=system_prompt,
+        config=agent_config,
+        stream_mode="updates",
+    )
 
     while True:
         user_input = console.input("[#69FFB4]> [/]")
         messages = [HumanMessage(content=user_input)]
 
-        # ------ Run Agent ------
+        # ------ Invoke Agent ------
         running_agent = agent.stream(
-            config=graph_config,
             input={"messages": messages},
-            stream_mode="updates",
         )
 
         for chunk in running_agent:
-            print(chunk)
-
             if chunk.get("agent"):
                 ai_message = chunk["agent"]["messages"][0].content
 
@@ -125,15 +154,13 @@ if __name__ == "__main__":
                 tree.add(tool_message)
 
         print("------- Graph stopped for human approval ----")
-        # print(running_agent.get_state(graph_config))
+        print(agent._compiled_graph.get_state(agent_config))
 
         human_approval = input("Enter Yes/No to accept/reject:")
         print("----- Resuming where graph stopped execution ----")
 
         running_agent = agent.stream(
-            Command(resume={"option": human_approval}),
-            config=graph_config,
-            stream_mode="updates",
+            input=Command(resume={"option": human_approval}),
         )
 
         for chunk in running_agent:
@@ -153,7 +180,3 @@ if __name__ == "__main__":
             elif chunk.get("tools"):
                 tool_message = chunk["tools"]["messages"][0].content
                 tree.add(tool_message)
-
-
-# Session uuids
-# a66d406aace2442a8a335caad837e20e

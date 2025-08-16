@@ -101,9 +101,11 @@ if __name__ == "__main__":
     llm_client = LLMInterface(llm_provider="anthropic")
 
     system_prompt = llm_client.get_system_prompt(
-        prompt="""You are an experienced software engineer and your job is to help by answering code related questions,
-    explain code and generate optimised and bug free and linted code to help answer the user's query also ensure code follows language specific best practices.
-    Make the best use of the tools available at your disposal namely list files tool, read file tool, grep tool and edit file tool to apply the code change."""
+        prompt="""You are an experienced and skilled software engineer and your job is to help by answering code related questions,
+    explain code and generate optimised, bug free and well linted code to help answer the user's query also ensure code follows language specific best practices.
+    Make the best use of the tools available at your disposal namely list_files tool, read_file tool, grep tool and edit_file tool each tool is specialised for a single type of task.
+    Reason well enough before generating any code to ensure the correctness and soundness of the output.
+    """
     )
 
     # --- Check if user need to resume old session or start new ---
@@ -140,22 +142,22 @@ if __name__ == "__main__":
             )
 
             for stream_message in running_agent:
-                # print((stream_message))
-                # print("\n\n\n")
-
                 # Stream chunk type 1: Agent response
                 if stream_message.get("agent"):
-                    ai_message = stream_message["agent"]["messages"][0].content
+                    ai_messages = stream_message["agent"]["messages"][0].content
 
-                    if isinstance(ai_message, list) and len(ai_message) > 1:
-                        if ai_message[1].get("text") is not None:
-                            console.print(
-                                f"[#CFCFCF]{stream_message['agent']['messages'][0].content[1]['text']}[/]"
-                            )
-                    else:
-                        console.print(
-                            f"[#CFCFCF]{stream_message['agent']['messages'][0].content}[/]"
-                        )
+                    if isinstance(ai_messages, list):
+                        for msg in ai_messages:
+                            if msg.get("thinking"):
+                                console.print(
+                                    f"[#B5B5B5]Thinking: {msg['thinking']}[/]\n"
+                                )
+                                console.print(
+                                    "[#B5B5B5] ---------------------------[/]"
+                                )
+
+                            elif msg.get("text"):
+                                console.print(f"[#CFCFCF]{msg['text']}[/]")
 
                 # Stream chunk type 2: Tool response
                 elif stream_message.get("tools"):
@@ -164,16 +166,18 @@ if __name__ == "__main__":
 
                 # Stream chunk type 3: Interrupt response
                 elif stream_message.get("__interrupt__"):
-                    console.print(
-                        f"[#99DEA6]{stream_message['__interrupt__'][0].value['code']}[/]"
-                    )
+                    old_code = stream_message["__interrupt__"][0].value["old_code"]
+                    new_code = stream_message["__interrupt__"][0].value["new_code"]
+                    console.print(old_code, highlight=False)
+                    console.print("[#CFCFCF]----------Code Diff------------[/]")
+                    console.print(new_code, highlight=False)
 
-                    console.print("\n")
                     human_approval = console.input("Enter Yes/No to accept/reject:")
                     print("----- Resuming where graph stopped execution ----")
 
                     input_type = Command(resume={"option": human_approval})
 
+                # Condition to check if agent loop has ended or continues with the current cycle
                 graph_state_values = agent._compiled_graph.get_state(
                     agent_config
                 ).values
@@ -189,6 +193,7 @@ if __name__ == "__main__":
 
                     stop_reason = llm_response_metadata["stop_reason"]
 
+                    # Officially marks the end of Agent loop
                     if stop_reason == "end_turn":
                         agent_cycle_active = False
                         break

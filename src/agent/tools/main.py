@@ -11,7 +11,7 @@ from langgraph.prebuilt import InjectedState
 from src.agent.state import GlobalState
 from langgraph.types import Command, interrupt
 from agent.tools.tools_prompts import EDIT_TOOL_DESCRIPTION
-from agent.utils import apply_generated_code
+from agent.utils import apply_generated_code, generate_diff
 
 
 @tool
@@ -63,14 +63,12 @@ def edit_file(
     state: Annotated[GlobalState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
-    print(" --- entering approval before making an edit ---")
-    print(old_code)
-    print("\n")
-    print(new_code)
-    print("--------")
+    # Highlighted and formatted diff text
+    old_highlight, new_highlight = generate_diff(
+        old_code, new_code, file_path, highlight=True
+    )
 
-    # TODO: Show diff of old vs new code change to user and ask for approval
-    human_approval = interrupt({"code": new_code})
+    human_approval = interrupt({"old_code": old_highlight, "new_code": new_highlight})
 
     if human_approval["option"].lower() in ("yes", "y"):
         # apply_generated_code(file_path, new_code)
@@ -92,7 +90,7 @@ def edit_file(
             update={
                 "messages": [
                     ToolMessage(
-                        f"File not changed/edited the generated code was rejected try again with better reasoning and concise code change. {file_path}",
+                        f"File not edited the generated code was rejected try again and reason well and provide right context. {file_path}",
                         tool_call_id=tool_call_id,
                     )
                 ]

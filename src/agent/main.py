@@ -5,13 +5,14 @@ import uuid
 from typing import Annotated, Union
 from typing_extensions import TypedDict
 
+
 from langchain_anthropic import ChatAnthropic
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph.message import add_messages
 from langchain_core.tools import tool
 from langgraph.prebuilt import ToolNode, tools_condition, create_react_agent
-from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage
+from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, AIMessage
 from langgraph.prebuilt.chat_agent_executor import AgentState
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -130,53 +131,67 @@ if __name__ == "__main__":
         user_input = console.input("[#69FFB4]> [/]")
         messages = [HumanMessage(content=user_input)]
 
-        # ------ Invoke Agent ------
-        running_agent = agent.stream(
-            input={"messages": messages},
-        )
+        # --- This inner while loop ensures we have ended one complete cycle of agent inovcation ---
+        input_type = {"messages": messages}
+        agent_cycle_active = True
+        while True:
+            running_agent = agent.stream(
+                input=input_type,
+            )
 
-        for chunk in running_agent:
-            if chunk.get("agent"):
-                ai_message = chunk["agent"]["messages"][0].content
+            for stream_message in running_agent:
+                # print((stream_message))
+                # print("\n\n\n")
 
-                if isinstance(ai_message, list) and len(ai_message) > 1:
-                    if ai_message[1].get("text") is not None:
+                # Stream chunk type 1: Agent response
+                if stream_message.get("agent"):
+                    ai_message = stream_message["agent"]["messages"][0].content
+
+                    if isinstance(ai_message, list) and len(ai_message) > 1:
+                        if ai_message[1].get("text") is not None:
+                            console.print(
+                                f"[#CFCFCF]{stream_message['agent']['messages'][0].content[1]['text']}[/]"
+                            )
+                    else:
                         console.print(
-                            f"[#CFCFCF]{chunk['agent']['messages'][0].content[1]['text']}[/]"
+                            f"[#CFCFCF]{stream_message['agent']['messages'][0].content}[/]"
                         )
-                else:
+
+                # Stream chunk type 2: Tool response
+                elif stream_message.get("tools"):
+                    tool_message = stream_message["tools"]["messages"][0].content
+                    tree.add(tool_message)
+
+                # Stream chunk type 3: Interrupt response
+                elif stream_message.get("__interrupt__"):
                     console.print(
-                        f"[#CFCFCF]{chunk['agent']['messages'][0].content}[/]"
+                        f"[#99DEA6]{stream_message['__interrupt__'][0].value['code']}[/]"
                     )
 
-            elif chunk.get("tools"):
-                tool_message = chunk["tools"]["messages"][0].content
-                tree.add(tool_message)
+                    console.print("\n")
+                    human_approval = console.input("Enter Yes/No to accept/reject:")
+                    print("----- Resuming where graph stopped execution ----")
 
-        print("------- Graph stopped for human approval ----")
-        print(agent._compiled_graph.get_state(agent_config))
+                    input_type = Command(resume={"option": human_approval})
 
-        human_approval = input("Enter Yes/No to accept/reject:")
-        print("----- Resuming where graph stopped execution ----")
+                graph_state_values = agent._compiled_graph.get_state(
+                    agent_config
+                ).values
+                last_ai_response = -1
+                for index, msg in enumerate(graph_state_values["messages"]):
+                    if isinstance(msg, AIMessage):
+                        last_ai_response = max(last_ai_response, index)
 
-        running_agent = agent.stream(
-            input=Command(resume={"option": human_approval}),
-        )
+                if last_ai_response > 0:
+                    llm_response_metadata = graph_state_values["messages"][
+                        last_ai_response
+                    ].response_metadata
 
-        for chunk in running_agent:
-            if chunk.get("agent"):
-                ai_message = chunk["agent"]["messages"][0].content
+                    stop_reason = llm_response_metadata["stop_reason"]
 
-                if isinstance(ai_message, list) and len(ai_message) > 1:
-                    if ai_message[1].get("text") is not None:
-                        console.print(
-                            f"[#CFCFCF]{chunk['agent']['messages'][0].content[1]['text']}[/]"
-                        )
-                else:
-                    console.print(
-                        f"[#CFCFCF]{chunk['agent']['messages'][0].content}[/]"
-                    )
+                    if stop_reason == "end_turn":
+                        agent_cycle_active = False
+                        break
 
-            elif chunk.get("tools"):
-                tool_message = chunk["tools"]["messages"][0].content
-                tree.add(tool_message)
+            if not agent_cycle_active:
+                break

@@ -1,7 +1,7 @@
 import os
 import glob
 import re
-from typing import Annotated
+from typing import Annotated, Optional
 from typing_extensions import TypedDict
 
 from langchain_core.tools import tool, InjectedToolCallId
@@ -26,9 +26,12 @@ def list_files(dir_path: str) -> list[str]:
 def read_file(file_path: str) -> str:
     "Takes a file path and reads the contents of the file and returns the contents for further use"
 
+    file_contents = []
     with open(file_path, "r") as file:
-        file_contents = file.read()
-        return file_contents
+        for line in file:
+            file_contents.append(line)
+
+    return file_contents
 
 
 @tool
@@ -54,16 +57,23 @@ def grep(query: str) -> list[tuple[str, int, str]]:
 
 @tool(description=EDIT_TOOL_DESCRIPTION)
 def edit_file(
-    generated_code: str,
+    old_code: Optional[str],
+    new_code: Optional[str],
     file_path: str,
     state: Annotated[GlobalState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Command:
     print(" --- entering approval before making an edit ---")
-    human_approval = interrupt({"generated_code": generated_code})
+    print(old_code)
+    print("\n")
+    print(new_code)
+    print("--------")
+
+    # TODO: Show diff of old vs new code change to user and ask for approval
+    human_approval = interrupt({"code": new_code})
 
     if human_approval["option"].lower() in ("yes", "y"):
-        apply_generated_code(file_path, generated_code)
+        # apply_generated_code(file_path, new_code)
 
         update_data = {
             "messages": [
@@ -77,11 +87,12 @@ def edit_file(
         return Command(update=update_data)
 
     elif human_approval["option"].lower() in ("no", "n"):
+        print("Trying again with better suggestion this time...")
         return Command(
             update={
                 "messages": [
                     ToolMessage(
-                        f"File not changed/edited the generated code was rejected {file_path}",
+                        f"File not changed/edited the generated code was rejected try again with better reasoning and concise code change. {file_path}",
                         tool_call_id=tool_call_id,
                     )
                 ]

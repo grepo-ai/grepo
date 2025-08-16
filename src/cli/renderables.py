@@ -62,7 +62,7 @@ class RenderSplits:
         self.output_queue = output_queue
         self._log_history = ""
         self._upper_split_panel = Panel(
-            "[#F35CFF]How can i help you today?[/]",
+            "[#FFCF57]How can i help you today?[/]",
             box=SIMPLE,
             height=0,
         )
@@ -125,7 +125,7 @@ class RenderSplits:
 
         if spin_it:
             self.spinner.renderable = Spinner(
-                "star", text=f"[#FC5CFF]{status_text}[/]", style="#FC5CFF"
+                "star", text=f"[#FF7DFC]{status_text}[/]", style="#FF7DFC"
             )
         else:
             self.spinner.renderable = (

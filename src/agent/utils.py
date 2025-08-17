@@ -17,14 +17,17 @@ def generate_session_uuid():
     return thread_uuid
 
 
-def apply_generated_code(file_path, generated_code):
-    # TODO: Complete file edit function
+def apply_diff(file_path, old_code, new_code):
+    "Applies the code diff to the file"
+
     with open(file_path, "rb+") as file:
         file.write(generated_code.encode("utf-8"))
     return
 
 
 def generate_diff(old_code, new_code, file_path, highlight=False):
+    "Generates the diff b/w exisiting code in file and generated code change"
+
     dmp = dmp_module.diff_match_patch()
 
     # Generate diff

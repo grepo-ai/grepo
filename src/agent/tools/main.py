@@ -11,7 +11,7 @@ from langgraph.prebuilt import InjectedState
 from src.agent.state import GlobalState
 from langgraph.types import Command, interrupt
 from agent.tools.tools_prompts import EDIT_TOOL_DESCRIPTION
-from agent.utils import apply_generated_code, generate_diff
+from agent.utils import apply_diff, generate_diff
 
 
 @tool
@@ -71,7 +71,7 @@ def edit_file(
     human_approval = interrupt({"old_code": old_highlight, "new_code": new_highlight})
 
     if human_approval["option"].lower() in ("yes", "y"):
-        # apply_generated_code(file_path, new_code)
+        apply_diff(file_path, old_code, new_code)
 
         update_data = {
             "messages": [

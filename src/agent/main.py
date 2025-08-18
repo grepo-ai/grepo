@@ -92,6 +92,7 @@ class Agent:
 if __name__ == "__main__":
     from rich.console import Console
     from rich.tree import Tree
+    from pathlib import Path
 
     # --- Text formatting ---
     console = Console()
@@ -100,13 +101,10 @@ if __name__ == "__main__":
     # --- Initialise LLM client ---
     llm_client = LLMInterface(llm_provider="anthropic")
 
-    system_prompt = llm_client.get_system_prompt(
-        prompt="""You are an experienced and skilled software engineer and your job is to help by answering code related questions,
-    explain code and generate optimised, bug free and well linted code to help answer the user's query also ensure code follows language specific best practices.
-    Make the best use of the tools available at your disposal namely list_files tool, read_file tool, grep tool and edit_file tool each tool is specialised for a single type of task.
-    Reason well enough before generating any code to ensure the correctness and soundness of the output.
-    """
-    )
+    # --- Read GREPO.md for system prompt and instructions ---
+    model_prompt = Path(f"{os.getcwd()}/GREPO.md").read_text(encoding="utf-8")
+
+    system_prompt = llm_client.get_system_prompt(prompt=model_prompt)
 
     # --- Check if user need to resume old session or start new ---
     session_uuid = console.input("Enter a session uuid to resume conversation: ")
@@ -150,11 +148,9 @@ if __name__ == "__main__":
                         for msg in ai_messages:
                             if msg.get("thinking"):
                                 console.print(
-                                    f"[#B5B5B5]Thinking: {msg['thinking']}[/]\n"
+                                    f"[#D4BD87]Thinking: {msg['thinking']}[/]\n"
                                 )
-                                console.print(
-                                    "[#B5B5B5] ---------------------------[/]"
-                                )
+                                console.print("[#D4BD87]---------------------------[/]")
 
                             elif msg.get("text"):
                                 console.print(f"[#CFCFCF]{msg['text']}[/]")
@@ -173,7 +169,6 @@ if __name__ == "__main__":
                     console.print(new_code, highlight=False)
 
                     human_approval = console.input("Enter Yes/No to accept/reject:")
-                    print("----- Resuming where graph stopped execution ----")
 
                     input_type = Command(resume={"option": human_approval})
 

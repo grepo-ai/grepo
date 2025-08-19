@@ -3,6 +3,7 @@ import sqlite3
 import os
 import tempfile
 import shutil
+from collections import OrderedDict, defaultdict
 
 
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -21,24 +22,43 @@ def generate_session_uuid():
     return thread_uuid
 
 
-# TODO: still not done need fixes and better ideas
 def apply_diff(file_path, old_code, new_code):
-    "Applies the code diff and makes in-place edits"
+    "Applies the code diff by making in-place edits"
+
+    dmp = dmp_module.diff_match_patch()
 
     # Get the diffs
     diffs, patches = generate_diff(old_code, new_code, file_path)
 
-    # Create a map with score for each diff
-    diff_map = {}
+    # Removed lines
+    removed_lines_count = 0
+
+    # No-change lines
+    no_changed_lines_count = 0
     for diff in diffs:
-        for line in diff[1].splitlines():
-            if line.strip():
-                diff_map[line.strip()] = diff[0]
+        if diff[0] == -1:
+            for line in diff[1].splitlines():
+                removed_lines_count += 1
 
-    # --- No edits to apply ---
-    if not diff_map:
-        return False
+        elif diff[0] == 0:
+            for line in diff[1].splitlines():
+                if line.strip():
+                    no_changed_lines_count += 1
 
+    # Old code lines
+    old_code_lines = []
+    for line in old_code.splitlines():
+        if line.strip():
+            old_code_lines.append(line.strip())
+
+    # Patched code
+    patched_code, _ = dmp.patch_apply(patches, old_code)
+    patched_code_lines = []
+    for line in patched_code.splitlines(keepends=True):
+        patched_code_lines.append(line)
+
+    applied_edit = False
+    patched_lines_written = 0
     with (
         open(file_path, "r") as src_file,
         tempfile.NamedTemporaryFile(
@@ -46,27 +66,22 @@ def apply_diff(file_path, old_code, new_code):
         ) as tmp_file,
     ):
         tmp_name = tmp_file.name
-        # TODO: Comments (doc or in-line) are not being handled at all (IMP fix asap) run agent/tools/main.py
-        # example to know also to track -> (Linear GREP-22)
 
-        for line_no, line in enumerate(src_file, start=0):
-            if line.strip() in diff_map.keys():
-                score = diff_map.get(line.strip())
+        for line_no, line in enumerate(src_file, start=1):
+            # Region in old file from where we start editing
+            if not applied_edit and line.strip() == old_code_lines[0]:
+                edit_from = line_no
+                for patched_line in patched_code_lines:
+                    tmp_file.write(patched_line)
+                    patched_lines_written += 1
 
-                if score is not None:
-                    # Deleted line
-                    if score == -1:
-                        # (Partial hack for now for handling comments) (Linear GREP-22)
-                        if line.strip() in ['"', '"""', "#"]:
-                            tmp_file.write(f"{line}")
-                        else:
-                            del diff_map[line.strip()]
-                            continue
+                applied_edit = True
 
-                    # Added line (1), No-change in line (0)
-                    elif score == 0:
-                        tmp_file.write(f"{line}")
-                        del diff_map[line.strip()]
+            elif (
+                applied_edit
+                and line_no < edit_from + removed_lines_count + no_changed_lines_count
+            ):
+                continue
 
             else:
                 tmp_file.write(line)
@@ -74,6 +89,10 @@ def apply_diff(file_path, old_code, new_code):
         # Atomic replace operation and safe
         shutil.copystat(file_path, tmp_name, follow_symlinks=False)
         os.replace(tmp_name, file_path)
+
+        print("------- Debugging print line in apply_diff func ------")
+        print(edit_from, patched_lines_written, no_changed_lines_count)
+        print("------- Debugging print line in apply_diff func ------")
 
     return True
 
@@ -90,7 +109,6 @@ def generate_diff(old_code, new_code, file_path, highlight=False):
     dmp.diff_cleanupSemantic(diffs)
 
     if not highlight:
-        # dmp.diff_cleanupEfficiency(diffs)
         patches = dmp.patch_make(old_code, diffs)
         return diffs, patches
 

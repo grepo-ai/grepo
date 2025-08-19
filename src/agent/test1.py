@@ -71,6 +71,8 @@ def merge_sort(arr: List[Any]) -> List[Any]:
     left_sorted = merge_sort(left_half)
     right_sorted = merge_sort(right_half)
 
+    return merge(left_sorted, right_sorted)
+
 
 # Test functions
 def test_merge_empty_lists():

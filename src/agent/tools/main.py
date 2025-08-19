@@ -17,35 +17,64 @@ if __name__ == "__main__":
     file_path = "/Users/tausif/grepo-main-env/grepo/src/agent/test1.py"
     old_code = """
 
-    def merge_sort(arr: List[Any]) -> List[Any]:
+    def merge(left: List[Any], right: List[Any]) -> List[Any]:
         \"\"\"
-        Sort a list using the merge sort algorithm.
+        Merge two sorted lists into a single sorted list.
 
         Args:
-            arr: List to be sorted
+            left: First sorted list
+            right: Second sorted list
 
         Returns:
-            A new sorted list containing all elements from the input list
+            A new sorted list containing all elements from both input lists
 
-        Time Complexity: O(n log n)
-        Space Complexity: O(n) for the recursive calls and temporary arrays
+        Time Complexity: O(n + m) where n and m are lengths of input lists
+        Space Complexity: O(n + m) for the result list
         \"\"\"
-        if len(arr) <= 1:
-            return arr.copy()  # Return a copy to maintain immutability
+        result = []
 
-        mid = len(arr) // 2
-        left_half = arr[:mid]
-        right_half = arr[mid:]
-
-        left_sorted = merge_sort(left_half)
-        right_sorted = merge_sort(right_half)
-
-        return merge(left_sorted, right_sorted)
     """
-    new_code = ""
+
+    new_code = """
+
+        def merge(left: List[Any], right: List[Any]) -> List[Any]:
+            result = []
+            if yo[l_index] <= right[r_index]:
+                result.append(left[l_index])
+                l_index += 1
+            else:
+                result.append(right[r_index])
+                r_index += 1
+                print("oooooo")
+
+
+    """
+    from pprint import pprint
+    from rich.console import Console
+    import diff_match_patch as dmp_module
+
+    console = Console()
+    dmp = dmp_module.diff_match_patch()
+
+    old, new = generate_diff(old_code, new_code, file_path, highlight=True)
+    console.print(old)
+    console.print("-------")
+    console.print(new)
 
     diffs, patches = generate_diff(old_code, new_code, file_path)
+    new_patched_text, _ = dmp.patch_apply(patches, old_code)
+    console.print(f"[#E8B641]{new_patched_text}[/]")
+
     res = apply_diff(file_path, old_code, new_code)
-    print(diffs)
-    print("#########")
+
+    # print("####  Diffs  #####")
+    pprint(diffs)
+
+    # removed_lines = 0
+    # for diff in diffs:
+    #     if diff[0] == -1:
+    #         for line in diff[1].splitlines():
+    #             removed_lines += 1
+    # print("--------- removed lines count ------")
+    # print(removed_lines)
     print(res)

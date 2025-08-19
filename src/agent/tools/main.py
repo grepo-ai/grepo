@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
         def merge(left: List[Any], right: List[Any]) -> List[Any]:
             result = []
-            if yo[l_index] <= right[r_index]:
+            if left[l_index] <= right[r_index]:
                 result.append(left[l_index])
                 l_index += 1
             else:
@@ -67,14 +67,6 @@ if __name__ == "__main__":
 
     res = apply_diff(file_path, old_code, new_code)
 
-    # print("####  Diffs  #####")
     pprint(diffs)
 
-    # removed_lines = 0
-    # for diff in diffs:
-    #     if diff[0] == -1:
-    #         for line in diff[1].splitlines():
-    #             removed_lines += 1
-    # print("--------- removed lines count ------")
-    # print(removed_lines)
     print(res)

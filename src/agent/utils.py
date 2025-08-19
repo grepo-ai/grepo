@@ -90,9 +90,9 @@ def apply_diff(file_path, old_code, new_code):
         shutil.copystat(file_path, tmp_name, follow_symlinks=False)
         os.replace(tmp_name, file_path)
 
-        print("------- Debugging print line in apply_diff func ------")
-        print(edit_from, patched_lines_written, no_changed_lines_count)
-        print("------- Debugging print line in apply_diff func ------")
+        # print("------- Debugging print line in apply_diff func ------")
+        # print(edit_from, patched_lines_written, no_changed_lines_count)
+        # print("------- Debugging print line in apply_diff func ------")
 
     return True
 

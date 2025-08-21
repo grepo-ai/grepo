@@ -14,7 +14,10 @@ from agent.utils import apply_diff, generate_diff
 
 
 @tool
-def grep(query: str) -> list[tuple[str, int, str]]:
+def grep(
+    query: str,
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> list[tuple[str, int, str]]:
     """
     This function performs a recursive search on all directories/sub-directories from root directory and returns all matches found for the given query along
     with file file_paths for each query match else returns empty list if no match is found

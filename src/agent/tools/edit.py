@@ -67,7 +67,6 @@ def edit_file(
         return Command(update=update_data)
 
     elif human_approval["option"].lower() in ("no", "n"):
-        print("Trying again with better suggestion this time...")
         return Command(
             update={
                 "messages": [

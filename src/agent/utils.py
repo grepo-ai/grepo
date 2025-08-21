@@ -125,3 +125,30 @@ def generate_diff(old_code, new_code, file_path, highlight=False):
             rich_new_text += f"[#7CFCA7]{diff[1]}[/]"
 
     return rich_old_text, rich_new_text
+
+
+def construct_code(read_file_data, truncate=False):
+    file_path = read_file_data[0]
+    code_lines = read_file_data[1]
+
+    code_block = ""
+    for line in code_lines:
+        code_block += line
+
+    if truncate:
+        code_length = len(code_block)
+        if code_length > 300:
+            return code_block[:300] + " ....", file_path
+
+        return code_block[:code_length] + " ....", file_path
+
+    return code_block + " ....", file_path
+
+
+def format_grep_results(results_list):
+    formatted_res = []
+
+    for res in results_list:
+        # slice_res = res[2][:10] if len(res[2]) > 10 else res[2]
+        formatted_res.append((res[0], f"line:{res[1]}"))
+    return formatted_res

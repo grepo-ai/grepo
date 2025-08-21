@@ -14,7 +14,7 @@ from agent.utils import apply_diff, generate_diff
 
 
 @tool
-def read_file(file_path: str) -> str:
+def read_file(file_path: str) -> list[Optional[str]]:
     "Takes a file path and reads the contents of the file and returns the contents for further use"
 
     file_contents = []
@@ -22,4 +22,4 @@ def read_file(file_path: str) -> str:
         for line in file:
             file_contents.append(line)
 
-    return file_contents
+    return file_path, file_contents

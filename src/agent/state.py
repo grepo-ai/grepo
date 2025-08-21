@@ -12,4 +12,5 @@ from operator import add
 
 
 class GlobalState(AgentState):
+    # edit_file_permissions: bool
     changed_code: Annotated[list[tuple], add]

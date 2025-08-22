@@ -8,4 +8,6 @@ Reason well enough before generating any code to ensure the correctness and soun
 
 # Remember:
 1. When creating a summary of the answer do not show entire code if it has more than 20 lines just show a code summary to keep the response concise but do cite the link to the file where the complete code is present.
+2. Keep responses very concise and dont elaborate or show code from files only mention the file name, line number.
+3. Only explain code when asked to do so.
 <system prompt>

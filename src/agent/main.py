@@ -187,6 +187,8 @@ if __name__ == "__main__":
 
                     # Read file
                     elif tool_name == "read_file":
+                        if not tool_message:
+                            continue
                         read_file_data = json.loads(tool_message)
                         code_snippet, file_path = construct_code(
                             read_file_data, truncate=True
@@ -195,10 +197,10 @@ if __name__ == "__main__":
                         tree_read.add(f"[#FA5CB3]Reading ({file_path})[/]")
 
                         console.print(tree_read)
-                        console.print(
-                            f"[#7CFCA7]{code_snippet} \n ------------------- \n [/] [#E8B641]File location: {file_path}[/]",
-                            highlight=False,
-                        )
+                        # console.print(
+                        #     f"[#7CFCA7]{code_snippet} \n ------------------- \n [/] [#E8B641]File location: {file_path}[/]",
+                        #     highlight=False,
+                        # )
 
                     # Grep file(s)
                     elif tool_name == "grep":

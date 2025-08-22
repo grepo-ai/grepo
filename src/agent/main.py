@@ -99,6 +99,7 @@ if __name__ == "__main__":
     from rich.console import Console
     from rich.tree import Tree
     from pathlib import Path
+    from rich.markdown import Markdown
 
     # --- Text formatting ---
 
@@ -169,7 +170,8 @@ if __name__ == "__main__":
                             elif msg.get("text"):
                                 console.print(f"[#CFCFCF]{msg['text']}[/]")
                     else:
-                        console.print(f"[#CFCFCF]{ai_messages}[/]")
+                        markdown_text = Markdown(ai_messages)
+                        console.print(markdown_text)
 
                 # Stream chunk type 2: Tool response
                 elif stream_message.get("tools"):
@@ -189,6 +191,10 @@ if __name__ == "__main__":
                         code_snippet, file_path = construct_code(
                             read_file_data, truncate=True
                         )
+
+                        tree_read.add(f"[#FA5CB3]Reading ({file_path})[/]")
+
+                        console.print(tree_read)
                         console.print(
                             f"[#7CFCA7]{code_snippet} \n ------------------- \n [/] [#E8B641]File location: {file_path}[/]",
                             highlight=False,
@@ -208,7 +214,7 @@ if __name__ == "__main__":
                         )
                         tree_grep.add(sub_tree_grep)
                         for res in formatted_grep_results:
-                            sub_tree_grep.add(f"{res[0]} :{res[1]}")
+                            sub_tree_grep.add(f"{res[0]}--{res[1]}")
 
                         console.print(tree_grep)
 

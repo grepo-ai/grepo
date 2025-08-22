@@ -200,15 +200,6 @@ if __name__ == "__main__":
                         if not tool_message:
                             continue
 
-                        # TODO: WOW this `continue` makes the agent work in loop again and finds the answer
-                        # with new search patterns explore WHY this worked? :o
-
-                        # if not tool_message:
-                        #     console.print(
-                        #         "There were no results found make sure query is not case-sensitive"
-                        #     )
-                        #     continue
-
                         grep_content_list = json.loads(tool_message)
                         formatted_grep_results = format_grep_results(grep_content_list)
 

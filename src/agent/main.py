@@ -187,7 +187,7 @@ if __name__ == "__main__":
 
                     # Read file
                     elif tool_name == "read_file":
-                        if not tool_message:
+                        if tool_message is None:
                             continue
                         read_file_data = json.loads(tool_message)
                         code_snippet, file_path = construct_code(

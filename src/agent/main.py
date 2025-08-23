@@ -178,6 +178,10 @@ if __name__ == "__main__":
                     # Check type of tool and populate tree alerts accordingly
                     tool_name = stream_message["tools"]["messages"][0].name
                     tool_message = stream_message["tools"]["messages"][0].content
+                    print(tool_name)
+                    print("************")
+                    if tool_name == "get_code_block":
+                        print(tool_message)
 
                     # List files
                     if tool_name == "list_files":
@@ -189,6 +193,8 @@ if __name__ == "__main__":
                     elif tool_name == "read_file":
                         if tool_message is None:
                             continue
+                        print("###########")
+                        print(tool_message)
                         read_file_data = json.loads(tool_message)
                         code_snippet, file_path = construct_code(
                             read_file_data, truncate=True

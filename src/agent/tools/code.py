@@ -62,6 +62,10 @@ def get_code_block(
             if klass["class_name"] == code_block_name:
                 return klass["class_code"]
 
+            for method in klass["class_methods"]:
+                if method["method_name"] == code_block_name:
+                    return method["method_code"]
+
         for function in symbols_map["functions"]:
             if function["function_name"] == code_block_name:
                 return function["function_code"]

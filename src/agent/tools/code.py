@@ -32,9 +32,6 @@ CODE_BLOCK_TOOL_DESCRIPTION = """
 """
 
 
-#    2. If recursive flag is True and at the same time file path is also sent.
-
-
 @tool(description=CODE_BLOCK_TOOL_DESCRIPTION)
 def get_code_block(
     file_path: Optional[str],
@@ -72,8 +69,6 @@ def get_code_block(
 
         raise ValueError("code definition not found in this file.")
 
-    # elif recursive:
-    #     # Recursively search for the code block starting from the cwd
 
-
-# TODO: Maybe consider doing grep from this code tool as well but make it ultra-fast and muli-threaded
+# TODO: Maybe consider doing grep from this code tool as well for code block search across codebase
+# Idea: Multi-threaded tree cursor based traversal of each file.

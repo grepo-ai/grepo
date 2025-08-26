@@ -5,39 +5,24 @@ import uuid
 import json
 import time
 import threading
-from typing import Annotated, Union
+from typing import Annotated, Union, Optional
 from typing_extensions import TypedDict
 
 
-from langchain_anthropic import ChatAnthropic
-from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.graph.message import add_messages
-from langchain_core.tools import tool
 from langchain_core.messages import RemoveMessage
+from langchain_core.tools.base import BaseTool
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
-from langgraph.prebuilt import ToolNode, tools_condition, create_react_agent
-from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, AIMessage
+from langgraph.prebuilt import create_react_agent
 from langgraph.prebuilt.chat_agent_executor import AgentState
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
-from langgraph.types import Command, interrupt
-from operator import add
-import sqlite3
 
 
-from dotenv import load_dotenv
-from agent.tools import list_files, read_file, grep, edit_file, get_code_block
+from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, AIMessage
+from langchain_anthropic import ChatAnthropic
+
+
 from agent.state import GlobalState
-from agent.utils import (
-    get_checkpointer,
-    generate_session_uuid,
-    construct_code,
-    format_grep_results,
-)
-
-
-load_dotenv()
 
 
 class Agent:
@@ -51,17 +36,17 @@ class Agent:
         stream_mode: Union[str, list],
         config: dict = {},
         auto_compact: bool = False,
-    ):  # TODO: complete type hints for class
-        self.model = model
-        self.system_prompt = system_prompt
-        self.tools = tools
-        self.state_schema = schema
-        self.stream_mode = stream_mode
-        self.checkpointer = checkpointer
-        self._config = config
+    ):
+        self.model: Union[ChatAnthropic, None] = model
+        self.system_prompt: SystemMessage = system_prompt
+        self.tools: list[BaseTool] = tools
+        self.state_schema: GlobalState = schema
+        self.stream_mode: Optional[list[str]] = stream_mode
+        self.checkpointer: SqliteSaver = checkpointer
+        self._config: dict = config
         self._compiled_graph: CompiledStateGraph = None
-        self.auto_compact = auto_compact
-        self._token_usage = {
+        self.auto_compact: bool = auto_compact
+        self._token_usage: dict = {
             "total_input_tokens": 0,
             "total_output_tokens": 0,
             "cache_creation_input_tokens": 0,

@@ -57,10 +57,10 @@ if __name__ == "__main__":
     # --- Text formatting ---
 
     console = Console()
-    tree_grep = Tree("[#E8B641]> ✱ Search[/]")
+    tree_grep = Tree("[#7CFCA7]-> ● Search[/]")
 
-    tree_list = Tree("[#E8B641]> ✱ List[/]")
-    tree_read = Tree("[#E8B641]> ✱ Read[/]")
+    tree_list = Tree("[#7CFCA7]-> ● List[/]")
+    tree_read = Tree("[#7CFCA7]-> ● Read[/]")
 
     # --- Initialise LLM client ---
     llm_client = LLMInterface(llm_provider="anthropic")
@@ -114,6 +114,7 @@ if __name__ == "__main__":
                 )
 
                 for stream_message in running_agent:
+                    # print(stream_message)
                     # print("\n\n")
                     # Stream chunk type 1: Agent response
                     if stream_message.get("agent"):
@@ -143,7 +144,7 @@ if __name__ == "__main__":
                             print(tool_message)
 
                         # List files
-                        if tool_name == "list_files":
+                        if tool_name == "list_files" or "Error:" in tool_message:
                             tree_list.add(
                                 "[#FA5CB3]Analysing files and directories...[/]"
                             )
@@ -152,7 +153,7 @@ if __name__ == "__main__":
 
                         # Read file
                         elif tool_name == "read_file":
-                            if tool_message is None:
+                            if tool_message is None or "Error:" in tool_message:
                                 continue
                             print("###########")
                             print(tool_message)
@@ -172,7 +173,7 @@ if __name__ == "__main__":
                         # Grep file(s)
                         elif tool_name == "grep":
                             # No results found by `grep` tool
-                            if not tool_message:
+                            if not tool_message or "Error:" in tool_message:
                                 continue
 
                             grep_content_list = json.loads(tool_message)

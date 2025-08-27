@@ -151,7 +151,7 @@ class Agent:
                                 f"<tool> Tool name: {message.name}\n Tool response:{message_json_content} <tool>"
                             )
 
-                # NOTE: Compaction only for `Claude` and `OpenAI` models for now.
+                # NOTE: Compaction currently only works for `Claude` and `OpenAI` models.
                 session_context_size = (
                     self._token_usage["total_input_tokens"]
                     + self._token_usage["total_output_tokens"]
@@ -165,6 +165,7 @@ class Agent:
 
                     # TODO: Add the generated summary to Agent state and update it
                     # by removing all earlier messages
+                    print("----- Summary of conversation -----")
                     print(generated_summary)
                     print("\n\n")
 

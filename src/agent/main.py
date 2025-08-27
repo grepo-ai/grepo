@@ -18,11 +18,12 @@ from langgraph.prebuilt.chat_agent_executor import AgentState
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 
-from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_anthropic import ChatAnthropic
 
 
 from agent.state import GlobalState
+from agent.llm import LLMInterface
 
 
 class Agent:
@@ -52,6 +53,7 @@ class Agent:
             "cache_creation_input_tokens": 0,
             "cache_read_input_tokens": 0,
         }
+        self._stop_thread = threading.Event()
 
     @property
     def config(self):
@@ -64,6 +66,9 @@ class Agent:
     @property
     def token_usage(self):
         return self._token_usage
+
+    def stop_thread(self):
+        self._stop_thread.set()
 
     def get_messages(self):
         return self._compiled_graph.get_state(self._config).values.get("messages", [])
@@ -92,41 +97,85 @@ class Agent:
         are must to be kept in active context window.
         """
 
-        def context_compaction(agent, token_store: dict):
-            while True:
-                token_store["total_input_tokens"] = 0
-                token_store["total_output_tokens"] = 0
-                token_store["cache_creation_input_tokens"] = 0
-                token_store["cache_read_input_tokens"] = 0
+        def context_compaction(agent):
+            llm_client = LLMInterface()
+
+            while not agent._stop_thread.is_set():
+                self._token_usage["total_input_tokens"] = 0
+                self._token_usage["total_output_tokens"] = 0
+                self._token_usage["cache_creation_input_tokens"] = 0
+                self._token_usage["cache_read_input_tokens"] = 0
 
                 # Extract messages from agent state and count total tokens
                 all_messages = agent.get_messages()
 
+                formatted_messages = []
+
                 for message in all_messages:
-                    if message.response_metadata:
+                    if isinstance(message, AIMessage):
                         response_metadata = message.response_metadata["usage"]
-                        token_store["total_input_tokens"] = response_metadata[
+                        self._token_usage["total_input_tokens"] += response_metadata[
                             "input_tokens"
                         ]
-                        token_store["total_output_tokens"] = response_metadata[
+                        self._token_usage["total_output_tokens"] += response_metadata[
                             "output_tokens"
                         ]
-                        token_store["cache_creation_input_tokens"] = response_metadata[
-                            "cache_creation_input_tokens"
-                        ]
-                        token_store["cache_read_input_tokens"] = response_metadata[
-                            "cache_read_input_tokens"
-                        ]
-                # TODO: Perform compaction if token usage in the session is just about to reach context window size
+                        self._token_usage["cache_creation_input_tokens"] = (
+                            response_metadata["cache_creation_input_tokens"]
+                        )
+                        self._token_usage["cache_read_input_tokens"] = (
+                            response_metadata["cache_read_input_tokens"]
+                        )
 
-                # Poll every 30 secs and check if compaction is required
-                time.sleep(30)
+                    # Format messages to create summary
+                    if isinstance(message, HumanMessage):
+                        formatted_messages.append(f"<human>{message.content}<human>")
+
+                    elif isinstance(message, AIMessage):
+                        if isinstance(message.content, list):
+                            for content in message.content:
+                                if (
+                                    content.get("text") is not None
+                                    and content.get("type") == "text"
+                                ):
+                                    formatted_messages.append(
+                                        f"<ai>{content['text']}<ai>"
+                                    )
+                        else:
+                            formatted_messages.append(f"<ai>{message.content}<ai>")
+
+                    elif isinstance(message, ToolMessage):
+                        if "Error:" not in message.content:
+                            message_json_content = json.loads(message.content)
+                            formatted_messages.append(
+                                f"<tool> Tool name: {message.name}\n Tool response:{message_json_content} <tool>"
+                            )
+
+                # NOTE: Compaction only for `Claude` and `OpenAI` models for now.
+                session_context_size = (
+                    self._token_usage["total_input_tokens"]
+                    + self._token_usage["total_output_tokens"]
+                )
+
+                # TODO: Remove 10k by actual context window size - 50K
+                if session_context_size > 10000:
+                    generated_summary = llm_client.generate_summary(
+                        "\n".join(formatted_messages)
+                    )
+
+                    # TODO: Add the generated summary to Agent state and update it
+                    # by removing all earlier messages
+                    print(generated_summary)
+                    print("\n\n")
+
+                # Poll every 10 secs and check if compaction is required
+                time.sleep(10)
 
         if self.auto_compact:
             # Run compaction in background and poll every 30 secs
             compaction_thread = threading.Thread(
                 target=context_compaction,
-                kwargs={"agent": self, "token_store": self._token_usage},
+                kwargs={"agent": self},
                 daemon=True,
             )
             compaction_thread.start()

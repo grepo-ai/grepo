@@ -220,6 +220,7 @@ if __name__ == "__main__":
 
                         # Officially marks the end of Agent loop
                         if stop_reason == "end_turn":
+                            console.print(agent.token_usage)
                             agent_cycle_active = False
                             break
 
@@ -227,4 +228,5 @@ if __name__ == "__main__":
                     break
     except KeyboardInterrupt:
         print("--- Ending session ---")
+        agent.stop_thread()
         print(agent.token_usage)

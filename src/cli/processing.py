@@ -7,14 +7,13 @@ def bg_query_processing(
     buffer, console, query_queue=None, output_queue=None, lock=None, stop_event=None
 ):
     while not stop_event.is_set():
-        while True:
-            try:
-                query = query_queue.get(timeout=1)
-                if query:
-                    output_queue.append(f"{query}")
+        try:
+            query = query_queue.get(timeout=1)
+            if query:
+                output_queue.append(f"{query}")
 
-            except queue.Empty:
-                continue
+        except queue.Empty:
+            continue
 
 
 def bg_query_logs_processing(

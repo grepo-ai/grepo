@@ -52,6 +52,8 @@ class Agent:
             "total_output_tokens": 0,
             "cache_creation_input_tokens": 0,
             "cache_read_input_tokens": 0,
+            "session_cost": 0.00,
+            "used_context_window_percent": 0.0,
         }
         self._stop_thread = threading.Event()
 
@@ -66,6 +68,19 @@ class Agent:
     @property
     def token_usage(self):
         return self._token_usage
+
+    def session_cost_stats(self, llm_client: LLMInterface):
+        cost_per_token = llm_client.cost_per_token
+
+        total_tokens_used = (
+            self._token_usage["total_input_tokens"]
+            + self._token_usage["total_output_tokens"]
+        )
+
+        self._token_usage["session_cost"] = f"${total_tokens_used * cost_per_token}"
+        self._token_usage["used_context_window_percent"] = (
+            f"{(total_tokens_used / 200000) * 100}%"
+        )
 
     def stop_thread(self):
         self._stop_thread.set()
@@ -101,10 +116,10 @@ class Agent:
             llm_client = LLMInterface()
 
             while not agent._stop_thread.is_set():
-                self._token_usage["total_input_tokens"] = 0
-                self._token_usage["total_output_tokens"] = 0
-                self._token_usage["cache_creation_input_tokens"] = 0
-                self._token_usage["cache_read_input_tokens"] = 0
+                agent._token_usage["total_input_tokens"] = 0
+                agent._token_usage["total_output_tokens"] = 0
+                agent._token_usage["cache_creation_input_tokens"] = 0
+                agent._token_usage["cache_read_input_tokens"] = 0
 
                 # Extract messages from agent state and count total tokens
                 all_messages = agent.get_messages()
@@ -114,16 +129,16 @@ class Agent:
                 for message in all_messages:
                     if isinstance(message, AIMessage):
                         response_metadata = message.response_metadata["usage"]
-                        self._token_usage["total_input_tokens"] += response_metadata[
+                        agent._token_usage["total_input_tokens"] += response_metadata[
                             "input_tokens"
                         ]
-                        self._token_usage["total_output_tokens"] += response_metadata[
+                        agent._token_usage["total_output_tokens"] += response_metadata[
                             "output_tokens"
                         ]
-                        self._token_usage["cache_creation_input_tokens"] = (
+                        agent._token_usage["cache_creation_input_tokens"] = (
                             response_metadata["cache_creation_input_tokens"]
                         )
-                        self._token_usage["cache_read_input_tokens"] = (
+                        agent._token_usage["cache_read_input_tokens"] = (
                             response_metadata["cache_read_input_tokens"]
                         )
 
@@ -151,13 +166,16 @@ class Agent:
                                 f"<tool> Tool name: {message.name}\n Tool response:{message_json_content} <tool>"
                             )
 
+                # Calculate cost of session so far
+                agent.session_cost_stats(llm_client)
+
                 # NOTE: Compaction currently only works for `Claude` and `OpenAI` models.
                 session_context_size = (
-                    self._token_usage["total_input_tokens"]
-                    + self._token_usage["total_output_tokens"]
+                    agent._token_usage["total_input_tokens"]
+                    + agent._token_usage["total_output_tokens"]
                 )
 
-                # TODO: Remove 10k by actual context window size - 50K
+                # TODO: Replace 10k by actual context window size but minus 50K avoid context bloating
                 if session_context_size > 10000:
                     generated_summary = llm_client.generate_summary(
                         "\n".join(formatted_messages)

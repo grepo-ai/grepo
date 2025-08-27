@@ -7,6 +7,7 @@ class LLMInterface:
         self,
         llm_provider="anthropic",
         model="claude-sonnet-4-20250514",
+        cost_per_token=3 / 1000000,
         thinking_mode: bool = True,
         max_tokens: int = 64000,
     ):
@@ -16,8 +17,19 @@ class LLMInterface:
             {"type": "enabled", "budget_tokens": 2000} if thinking_mode else None
         )
         self.model = model
+        self._cost_per_token = self._get_cost_per_token()
+
+    @property
+    def cost_per_token(self):
+        return self._cost_per_token
+
+    def _get_cost_per_token(self):
+        if self.llm_provider == "anthropic":
+            if self.model == "claude-sonnet-4-20250514":
+                return 3 / 1000000
 
     def client(self):
+        # Anthropic LLM
         if self.llm_provider == "anthropic":
             llm_client = ChatAnthropic(
                 model=self.model,

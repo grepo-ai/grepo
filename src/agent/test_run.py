@@ -229,4 +229,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("--- Ending session ---")
         agent.stop_thread()
-        print(agent.token_usage)
+        console.print(agent.token_usage)

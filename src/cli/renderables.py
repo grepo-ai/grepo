@@ -13,13 +13,13 @@ from src.cli.commands import Commands
 def render_intro(console):
     console.print("\n")
     text = Text()
-    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#FFF9E5")
+    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#8FF4FF")
     console.print(text)
 
     panel = Panel(
-        f"[#FAFAFA]   * Welcome to [#FFD66E]Grepo[/] * [/] \n\n [#969696]  cwd: {os.getcwd()}[/] \n\n  [#969696] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
+        f"[#FAFAFA]   * Welcome to [#80FFFD]Grepo[/] * [/] \n\n [#EBC97A]  cwd: {os.getcwd()}[/] \n\n  [#EBC97A] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
         box=ROUNDED,
-        border_style="#FFD66E",
+        border_style="#80FFFD",
         expand=False,
         padding=(0, 0, 0, 0),
     )
@@ -62,7 +62,7 @@ class RenderSplits:
         self.output_queue = output_queue
         self._log_history = ""
         self._upper_split_panel = Panel(
-            "[#FFCF57]How can i help you today?[/]",
+            "[#F47AFF]How can i help you today?[/]",
             box=SIMPLE,
             height=0,
         )

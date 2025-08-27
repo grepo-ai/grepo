@@ -4,4 +4,5 @@ color_palette = {
     "yellow": "#E8B641",
     "cyan": "#60FCF5",
     "pink": "#FA5CB3",
+    "grepo_logo": "#8FF4FF",
 }

@@ -17,7 +17,7 @@ def render_intro(console):
     console.print(text)
 
     panel = Panel(
-        f"[#FAFAFA]   * Welcome to [#80FFFD]Grepo[/] * [/] \n\n [#EBC97A]  cwd: {os.getcwd()}[/] \n\n  [#EBC97A] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
+        f"[#FAFAFA]   * Welcome to [#80FFFD]Grepo[/] * [/] \n\n [#F5BE3D]  cwd: {os.getcwd()}[/] \n\n  [#F5BE3D] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
         box=ROUNDED,
         border_style="#80FFFD",
         expand=False,

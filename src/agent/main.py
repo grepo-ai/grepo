@@ -175,7 +175,7 @@ class Agent:
                     + agent._token_usage["total_output_tokens"]
                 )
 
-                # TODO: Replace 10k by actual context window size but minus 50K avoid context bloating
+                # TODO: Replace 10k by actual context window size but minus 10K avoid context bloating
                 if session_context_size > 10000:
                     generated_summary = llm_client.generate_summary(
                         "\n".join(formatted_messages)

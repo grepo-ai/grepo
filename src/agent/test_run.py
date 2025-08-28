@@ -22,6 +22,9 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command, interrupt
 
+# ---- Langfuse ---
+from agent.tracing import langfuse_handler
+
 
 from operator import add
 import sqlite3
@@ -78,6 +81,7 @@ if __name__ == "__main__":
     agent_config = {
         "configurable": {"thread_id": session_uuid},
         "recursion_limit": 50,
+        "callbacks": [langfuse_handler],
     }
 
     # --- Create an Agent ---

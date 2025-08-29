@@ -116,4 +116,5 @@ class LLMInterface:
 
         llm_client = self.client()
         summary_response = llm_client.invoke(messages)
+
         return summary_response

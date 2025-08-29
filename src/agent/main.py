@@ -79,7 +79,7 @@ class Agent:
 
         self._token_usage["session_cost"] = f"${total_tokens_used * cost_per_token}"
         self._token_usage["used_context_window_percent"] = (
-            f"{(total_tokens_used / 200000) * 100}%"
+            f"{(total_tokens_used / 200000) * 100:.2f}%"
         )
 
     def stop_thread(self):
@@ -87,6 +87,12 @@ class Agent:
 
     def get_messages(self):
         return self._compiled_graph.get_state(self._config).values.get("messages", [])
+
+    def update_messages(self, messages, compact=False):
+        if compact:
+            new_messages = [RemoveMessage(id=REMOVE_ALL_MESSAGES), *messages]
+
+        self._compiled_graph.update_state(self._config, {"messages": new_messages})
 
     def clear_session(
         self,
@@ -102,14 +108,13 @@ class Agent:
         )
 
     def auto_compact_context(self):
-        # TODO: Complete compaction logic also ensure last message should be from AI which is a summary
         """
         Compaction automatically happens when the chat session is just about to reach context window size
-        of a LLM then it takes all the messages in the session (agent state) and generates a high quality summary condensing it
+        of a LLM then it takes all the messages in the active session (agent state) and generates a high quality summary condensing it
         into a shorter and more concise version while keeping key insights and core points in this generated summary.
 
         NOTE: Compaction logic does not take into consideration system prompt or files added to current context as these
-        are must to be kept in active context window.
+        are must to be kept in active context window at all times.
         """
 
         def context_compaction(agent):
@@ -121,11 +126,11 @@ class Agent:
                 agent._token_usage["cache_creation_input_tokens"] = 0
                 agent._token_usage["cache_read_input_tokens"] = 0
 
-                # Extract messages from agent state and count total tokens
                 all_messages = agent.get_messages()
 
                 formatted_messages = []
 
+                # Calculate total tokens to check if compaction is needed
                 for message in all_messages:
                     if isinstance(message, AIMessage):
                         response_metadata = message.response_metadata["usage"]
@@ -142,9 +147,9 @@ class Agent:
                             response_metadata["cache_read_input_tokens"]
                         )
 
-                    # Format messages to create summary
+                    # Format messages for generating a summary
                     if isinstance(message, HumanMessage):
-                        formatted_messages.append(f"<human>{message.content}<human>")
+                        formatted_messages.append(f"<human>{message.content}</human>")
 
                     elif isinstance(message, AIMessage):
                         if isinstance(message.content, list):
@@ -157,41 +162,58 @@ class Agent:
                                         f"<ai>{content['text']}<ai>"
                                     )
                         else:
-                            formatted_messages.append(f"<ai>{message.content}<ai>")
+                            formatted_messages.append(f"<ai>{message.content}</ai>")
 
                     elif isinstance(message, ToolMessage):
-                        if "Error:" not in message.content:
+                        if (
+                            message.content is not None
+                            and "Error:" not in message.content
+                        ):
                             message_json_content = json.loads(message.content)
                             formatted_messages.append(
-                                f"<tool> Tool name: {message.name}\n Tool response:{message_json_content} <tool>"
+                                f"<tool> Tool name: {message.name}\n Tool response:{message_json_content} </tool>"
                             )
 
-                # Calculate cost of session so far
+                # Calculate cost ($) of session and context (%) used so far
                 agent.session_cost_stats(llm_client)
 
-                # NOTE: Compaction currently only works for `Claude` and `OpenAI` models.
                 session_context_size = (
                     agent._token_usage["total_input_tokens"]
                     + agent._token_usage["total_output_tokens"]
                 )
 
-                # TODO: Replace 10k by actual context window size but minus 10K avoid context bloating
+                # TODO: Replace 10k by actual context window size but minus 20K avoid context bloating
                 if session_context_size > 10000:
-                    generated_summary = llm_client.generate_summary(
-                        "\n".join(formatted_messages)
-                    )
+                    print("------ Attempting Compaction -----")
+                    # Compact only when agent loop has ended and there are no tool calls remaining
+                    last_message = agent.get_messages()[-1]
 
-                    # TODO: Add the generated summary to Agent state and update it
-                    # by removing all earlier messages
-                    print("----- Summary of conversation -----")
-                    print(generated_summary)
-                    print("\n\n")
+                    # TODO: Is this check correct if last message is always AIMessage instance or not?
+                    if (
+                        isinstance(last_message, AIMessage)
+                        and not last_message.tool_calls
+                    ):
+                        generated_summary = llm_client.generate_summary(
+                            "\n".join(formatted_messages)
+                        )
 
-                # Poll every 10 secs and check if compaction is required
+                        # Rewrite the message history and update with a summary
+                        agent.update_messages(
+                            messages=[
+                                HumanMessage(
+                                    content="Generate a summary of the entire conversation."
+                                ),
+                                generated_summary,
+                            ],
+                            compact=True,
+                        )
+                        print("------ Compaction Completed ------")
+
+                # Poll every 10 secs and check if compaction is required (keeping it time based for now to simply logic)
                 time.sleep(10)
 
         if self.auto_compact:
-            # Run compaction in background and poll every 30 secs
+            # Run compaction in background thread
             compaction_thread = threading.Thread(
                 target=context_compaction,
                 kwargs={"agent": self},
@@ -215,7 +237,7 @@ class Agent:
 
     def stream(self, input):
         # Returns a new generator on each new invocation of user input
-        # else simply use the generator object to get stream updates
+        # simply iterate over generator object to get stream updates
         return self._compiled_graph.stream(
             input=input, config=self._config, stream_mode=self.stream_mode
         )

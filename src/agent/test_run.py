@@ -234,3 +234,4 @@ if __name__ == "__main__":
         print("--- Ending session ---")
         agent.stop_thread()
         console.print(agent.token_usage)
+        print(agent.get_messages())

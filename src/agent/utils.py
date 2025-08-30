@@ -149,5 +149,5 @@ def format_grep_results(results_list):
 
     for res in results_list:
         # slice_res = res[2][:10] if len(res[2]) > 10 else res[2]
-        formatted_res.append((res[0], f"line:{res[1]}"))
+        formatted_res.append((res[0], f":{res[1]}"))
     return formatted_res

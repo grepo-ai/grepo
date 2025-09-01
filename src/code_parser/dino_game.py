@@ -199,6 +199,28 @@ def main():
         textRect.center = (1000, 40)
         SCREEN.blit(text, textRect)
 
+        def score2():
+            global points, game_speed
+            points += 1
+            if points % 100 == 0:
+                game_speed += 1
+
+            text = font.render("Points: " + str(points), True, (0, 0, 0))
+            textRect = text.get_rect()
+            textRect.center = (1000, 40)
+            SCREEN.blit(text, textRect)
+
+            def score3():
+                global points, game_speed
+                points += 1
+                if points % 100 == 0:
+                    game_speed += 1
+
+                text = font.render("Points: " + str(points), True, (0, 0, 0))
+                textRect = text.get_rect()
+                textRect.center = (1000, 40)
+                SCREEN.blit(text, textRect)
+
     def background():
         global x_pos_bg, y_pos_bg
         image_width = BG.get_width()
@@ -278,17 +300,3 @@ def menu(death_count):
 
 
 menu(death_count=0)
-
-"""
-class Hello:
-    def __init__(self, a, b):
-        self.a = a
-        self.b = b
-
-    def hello_world(self):
-        return "Hello world"
-
-
-hey = Hello()
-hey.hello_world()
-"""

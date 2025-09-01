@@ -100,10 +100,10 @@ class CodeWalker:
         code_blocks = defaultdict(list)
 
         parsed_code = self.parse(
-            encoded_code=code, single_query=CODE_SYMBOLS_QUERY_MAP["classes"]
+            encoded_code=code, single_query=CODE_SYMBOLS_QUERY_MAP["class"]
         )
-        if parsed_code.get("class_names"):
-            for class_name_node in parsed_code["class_names"]:
+        if parsed_code.get("class_name"):
+            for class_name_node in parsed_code["class_name"]:
                 code_blocks["classes"].append(
                     {
                         "class_name": class_name_node.text.decode(),
@@ -121,11 +121,11 @@ class CodeWalker:
     def _extract_class_methods(self, class_node, class_name, file_path):
         class_methods = []
         parsed_code = self.parse(
-            node=class_node, single_query=CODE_SYMBOLS_QUERY_MAP["functions"]
+            node=class_node, single_query=CODE_SYMBOLS_QUERY_MAP["function"]
         )
 
-        if parsed_code.get("function_names"):
-            for method_name_node in parsed_code["function_names"]:
+        if parsed_code.get("function_name"):
+            for method_name_node in parsed_code["function_name"]:
                 class_methods.append(
                     {
                         "method_name": method_name_node.text.decode(),
@@ -149,6 +149,7 @@ class CodeWalker:
             if not visited_children:
                 node = cursor.node
 
+                # TODO: Add support for other languages too starting with JS
                 if node.type == "function_definition" and node.parent.type == "module":
                     functions_list.append(node.text.decode())
                 if not cursor.goto_first_child():
@@ -169,10 +170,10 @@ class CodeWalker:
 
         parsed_code = self.parse(
             encoded_code="\n".join(functions_list).encode(),
-            single_query=CODE_SYMBOLS_QUERY_MAP["functions"],
+            single_query=CODE_SYMBOLS_QUERY_MAP["function"],
         )
 
-        for function_name_node in parsed_code["function_names"]:
+        for function_name_node in parsed_code["function_name"]:
             functions_map.append(
                 {
                     "function_name": function_name_node.text.decode(),
@@ -190,14 +191,14 @@ if __name__ == "__main__":
     from pathlib import Path
     import json
 
-    abs_file_path = "/Users/tausif/grepo-main-env/grepo/src/code_parser/parser.py"
+    abs_file_path = "/Users/tausif/grepo-main-env/grepo/src/code_parser/dino_game.py"
     file_path = str(Path(abs_file_path))
 
     # Create a parser
     code_walker = CodeWalker(ParserLanguages.PYTHON.value)
 
     # Pass in the code to be parsed
-    encoded_code = CodeWalker.encode_code(file_paths=[abs_file_path])["parser.py"]
+    encoded_code = CodeWalker.encode_code(file_paths=[abs_file_path])["dino_game.py"]
 
     # Construct code map with extracted code blocks (classes, functions and methods)
     symbols_map = code_walker.extract_symbols(encoded_code, file_path)
@@ -214,10 +215,7 @@ if __name__ == "__main__":
     import time, random
 
     while True:
-        sub_tree = Tree(f"[#F048D7]Matches found ({value})[/]")
-        tree.add(sub_tree)
-        sub_tree.add("hello")
-
-        console.print(tree)
-        value = random.randint(1, 10)
-        time.sleep(3)
+        user_input = input("enter a function block: ")
+        print("##############")
+        # print(symbols_map)
+        time.sleep(5)

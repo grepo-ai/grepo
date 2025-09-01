@@ -169,14 +169,9 @@ if __name__ == "__main__":
                             tree_read.add(f"[#FA5CB3]Reading ({file_path})[/]")
 
                             console.print(tree_read)
-                            # console.print(
-                            #     f"[#7CFCA7]{code_snippet} \n ------------------- \n [/] [#E8B641]File location: {file_path}[/]",
-                            #     highlight=False,
-                            # )
 
                         # Grep file(s)
                         elif tool_name == "grep":
-                            # No results found by `grep` tool
                             if not tool_message or "Error:" in tool_message:
                                 continue
 
@@ -190,7 +185,7 @@ if __name__ == "__main__":
                             )
                             tree_grep.add(sub_tree_grep)
                             for res in formatted_grep_results:
-                                sub_tree_grep.add(f"{res[0]}--{res[1]}")
+                                sub_tree_grep.add(f"{res[0]}{res[1]}")
 
                             console.print(tree_grep)
 

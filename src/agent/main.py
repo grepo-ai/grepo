@@ -77,7 +77,7 @@ class Agent:
             + self._token_usage["total_output_tokens"]
         )
 
-        self._token_usage["session_cost"] = f"${total_tokens_used * cost_per_token}"
+        self._token_usage["session_cost"] = f"${total_tokens_used * cost_per_token:.4f}"
         self._token_usage["used_context_window_percent"] = (
             f"{(total_tokens_used / 200000) * 100:.2f}%"
         )
@@ -169,10 +169,18 @@ class Agent:
                             message.content is not None
                             and "Error:" not in message.content
                         ):
-                            message_json_content = json.loads(message.content)
-                            formatted_messages.append(
-                                f"<tool> Tool name: {message.name}\n Tool response:{message_json_content} </tool>"
-                            )
+                            try:
+                                message_json_content = json.loads(message.content)
+                                formatted_messages.append(
+                                    f"<tool> Tool name: {message.name}\n Tool response:{message_json_content} </tool>"
+                                )
+
+                            except json.JSONDecodeError:
+                                print(
+                                    " --- Tool content decode error (context compaction) ---"
+                                )  # TODO: Improve error handling
+                                print(message.content)
+                                pass
 
                 # Calculate cost ($) of session and context (%) used so far
                 agent.session_cost_stats(llm_client)
@@ -188,7 +196,7 @@ class Agent:
                     # Compact only when agent loop has ended and there are no tool calls remaining
                     last_message = agent.get_messages()[-1]
 
-                    # TODO: Is this check correct if last message is always AIMessage instance or not?
+                    # TODO: Verify if this condition is correct whether last message is always AIMessage instance or not?
                     if (
                         isinstance(last_message, AIMessage)
                         and not last_message.tool_calls

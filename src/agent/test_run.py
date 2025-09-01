@@ -160,7 +160,7 @@ if __name__ == "__main__":
                             if tool_message is None or "Error:" in tool_message:
                                 continue
                             print("###########")
-                            print(tool_message)
+                            print(tool_message[:50])
                             read_file_data = json.loads(tool_message)
                             code_snippet, file_path = construct_code(
                                 read_file_data, truncate=True

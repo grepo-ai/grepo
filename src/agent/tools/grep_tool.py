@@ -33,4 +33,7 @@ def grep(
                 if result:
                     query_matches.append((path, line_number, line))
 
-    return query_matches
+    if query_matches is not None:
+        return query_matches
+
+    raise ValueError("No matches found for the query.")

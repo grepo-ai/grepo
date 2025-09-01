@@ -67,7 +67,7 @@ def get_code_block(
             if function["function_name"] == code_block_name:
                 return function["function_code"]
 
-        raise ValueError("code definition not found in this file.")
+        raise ValueError("No code definition found in this file.")
 
 
 # TODO: Maybe consider doing grep from this code tool as well for code block search across codebase

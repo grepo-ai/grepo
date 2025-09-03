@@ -85,8 +85,9 @@ def apply_diff(file_path, old_code, new_code):
             else:
                 tmp_file.write(line)
 
-        # Atomic replace operation and safe
+        # Copy file metadata (permissioons, last edited etc.) from src to dst
         shutil.copystat(file_path, tmp_name, follow_symlinks=False)
+        # Atomic operation of replace to same old location (overrides if file already exists)
         os.replace(tmp_name, file_path)
 
         # print("------- Debugging print line in apply_diff func ------")

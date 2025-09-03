@@ -170,27 +170,28 @@ class Agent:
                             and "Error:" not in message.content
                         ):
                             try:
-                                if isinstance(message.content, list):
+                                message_json_content = json.loads(message.content)
+
+                                if isinstance(message_json_content, list):
                                     tool_messages = ""
-                                    for tool_message in message.content:
-                                        tool_messages += tool_message + " "
+
+                                    for tool_message in message_json_content:
+                                        if isinstance(tool_message, list):
+                                            for line in tool_message:
+                                                tool_messages += line + " "
+
+                                        else:
+                                            tool_messages += tool_message + " "
 
                                     formatted_messages.append(
                                         f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
                                     )
 
-                                else:
-                                    message_json_content = json.loads(message.content)
-
-                                formatted_messages.append(
-                                    f"<tool> Tool name: {message.name}\n Tool response:{message_json_content} </tool>"
-                                )
-
+                            # Type of message content is str
                             except json.JSONDecodeError:
-                                print(
-                                    " --- Tool content decode error (context compaction) ---"
-                                )  # TODO: Improve error handling
-                                print(message.content)
+                                formatted_messages.append(
+                                    f"<tool> Tool name: {message.name}\n Tool response:{message.content} </tool>"
+                                )
                                 pass
 
                 # Calculate cost ($) of session and context (%) used so far

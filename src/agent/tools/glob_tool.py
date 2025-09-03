@@ -31,6 +31,9 @@ def glob(pattern: str) -> list[str]:
 
     # We show 100 files at max unless user enforces to show more files
     # this is to ensure we are not showing >100 files in one attempt unless requested by user explicitly
+
+    # TODO: Consider using graph state variables to ensure no repeated files are shown and use graph state variables
+    # as cache for previous tool runs results infact use this approach for other tools as well.
     results = []
     pathnames = std_glob.iglob(pattern, recursive=recursive)
 

@@ -169,30 +169,46 @@ class Agent:
                             message.content is not None
                             and "Error:" not in message.content
                         ):
-                            try:
-                                message_json_content = json.loads(message.content)
+                            if isinstance(message.content, list):
+                                tool_messages = ""
 
-                                if isinstance(message_json_content, list):
-                                    tool_messages = ""
+                                for tool_message in message.content:
+                                    if isinstance(tool_message, list):
+                                        for line in tool_message:
+                                            tool_messages += line + " "
 
-                                    for tool_message in message_json_content:
-                                        if isinstance(tool_message, list):
-                                            for line in tool_message:
-                                                tool_messages += line + " "
+                                    else:
+                                        tool_messages += tool_message + " "
 
-                                        else:
-                                            tool_messages += tool_message + " "
-
-                                    formatted_messages.append(
-                                        f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
-                                    )
-
-                            # Type of message content is str
-                            except json.JSONDecodeError:
                                 formatted_messages.append(
-                                    f"<tool> Tool name: {message.name}\n Tool response:{message.content} </tool>"
+                                    f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
                                 )
-                                pass
+
+                            else:
+                                try:
+                                    message_json_content = json.loads(message.content)
+
+                                    if isinstance(message_json_content, list):
+                                        tool_messages = ""
+
+                                        for tool_message in message_json_content:
+                                            if isinstance(tool_message, list):
+                                                for line in tool_message:
+                                                    tool_messages += line + " "
+
+                                            else:
+                                                tool_messages += tool_message + " "
+
+                                        formatted_messages.append(
+                                            f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
+                                        )
+
+                                # Type of message content is str
+                                except json.JSONDecodeError:
+                                    formatted_messages.append(
+                                        f"<tool> Tool name: {message.name}\n Tool response:{message.content} </tool>"
+                                    )
+                                    pass
 
                 # Calculate cost ($) of session and context (%) used so far
                 agent.session_cost_stats(llm_client)

@@ -31,7 +31,7 @@ import sqlite3
 
 
 from dotenv import load_dotenv
-from agent.tools import list_files, read_file, grep, edit_file, get_code_block
+from agent.tools import list_files, read_file, grep, edit_file, get_code_block, glob
 from agent.state import GlobalState
 from agent.utils import (
     get_checkpointer,
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     # --- Create an Agent ---
     agent = Agent(
         model=llm_client.client(),
-        tools=[list_files, read_file, grep, edit_file, get_code_block],
+        tools=[list_files, read_file, grep, edit_file, get_code_block, glob],
         schema=GlobalState,
         checkpointer=get_checkpointer(),
         system_prompt=system_prompt,
@@ -145,6 +145,9 @@ if __name__ == "__main__":
                         print(tool_name)
                         print("************")
                         if tool_name == "get_code_block":
+                            print(tool_message)
+
+                        if tool_name == "glob":
                             print(tool_message)
 
                         # List files

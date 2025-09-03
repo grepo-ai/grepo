@@ -14,13 +14,13 @@ from agent.utils import apply_diff, generate_diff
 
 GLOB_TOOL_DESCRIPTION = """
 
-This tool is useful when you need to find a file path by a specific pattern.
+This tool is useful when you need to find a path by a specific pattern.
 
 ## IMPORTANT
-  - Pattern can be an absolute file path like /usr/src/hello.py (finds this particular file in /usr/src directory) or
-    it could be a relative pattern like /usr/src/*.py (finds all .py files in /usr/src directory)
-  - If a pattern has ** in it then it has to be searched recursively for example
-    /usr/**/*.py this will search for all directories, sub-directories and find all .py files.
+  - Pattern can be an absolute path /usr/src/hello.py (finds this particular path in /usr/src directory) or
+    it could be a relative pattern like /usr/src/*.py (finds all paths ending with .py in /usr/src directory)
+  - If a pattern has ** in it then directory has to be searched recursively for example
+    /usr/**/*.py this will search for all directories, sub-directories starting from /usr/ and find all paths ending with .py
 """
 
 
@@ -28,6 +28,18 @@ This tool is useful when you need to find a file path by a specific pattern.
 @tool(description=GLOB_TOOL_DESCRIPTION)
 def glob(pattern: str) -> list[str]:
     recursive = True if "**" in pattern else False
-    file_paths = std_glob.iglob(pattern, recursive=recursive)
 
-    return file_paths
+    # We show 100 files at max unless user enforces to show more files
+    # this is to ensure we are not showing >100 files in one attempt unless requested by user explicitly
+    results = []
+    pathnames = std_glob.iglob(pattern, recursive=recursive)
+
+    for path in pathnames:
+        if len(results) > 100:
+            break
+        results.append(path)
+
+    if results:
+        return results
+
+    raise ValueError("No matches found for this pattern.")

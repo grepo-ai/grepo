@@ -170,7 +170,18 @@ class Agent:
                             and "Error:" not in message.content
                         ):
                             try:
-                                message_json_content = json.loads(message.content)
+                                if isinstance(message.content, list):
+                                    tool_messages = ""
+                                    for tool_message in message.content:
+                                        tool_messages += tool_message + " "
+
+                                    formatted_messages.append(
+                                        f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
+                                    )
+
+                                else:
+                                    message_json_content = json.loads(message.content)
+
                                 formatted_messages.append(
                                     f"<tool> Tool name: {message.name}\n Tool response:{message_json_content} </tool>"
                                 )

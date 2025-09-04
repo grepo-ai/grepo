@@ -31,7 +31,13 @@ class LLMInterface:
     def _get_cost_per_token(self):
         if self.llm_provider == "anthropic":
             if self.model == "claude-sonnet-4-20250514":
-                return 3 / 1000000
+                return {
+                    "input_token_cost": 3 / 1000000,
+                    "output_token_cost": 15 / 1000000,
+                    "cache_read_cost": 0.30 / 1000000,
+                    "cache_write_cost_5m": 3.75 / 1000000,
+                    "cache_write_cost_1h": 6 / 1000000,
+                }
 
     def client(self):
         # Anthropic LLM

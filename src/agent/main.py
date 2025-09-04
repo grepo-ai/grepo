@@ -114,7 +114,7 @@ class Agent:
                         for tool_message in message.content:
                             if isinstance(tool_message, list):
                                 for line in tool_message:
-                                    tool_messages += line + " "
+                                    tool_messages += str(line) + " "
 
                             else:
                                 tool_messages += tool_message + " "
@@ -133,7 +133,7 @@ class Agent:
                                 for tool_message in message_json_content:
                                     if isinstance(tool_message, list):
                                         for line in tool_message:
-                                            tool_messages += line + " "
+                                            tool_messages += str(line) + " "
 
                                     else:
                                         tool_messages += tool_message + " "
@@ -151,7 +151,9 @@ class Agent:
 
         return formatted_messages
 
-    def session_cost(self, llm_client: LLMInterface, all_state_messages=None):
+    def session_cost(
+        self, llm_client: LLMInterface, all_state_messages=None, compaction=False
+    ):
         if all_state_messages is None:
             all_state_messages = self.get_messages()
 
@@ -182,18 +184,31 @@ class Agent:
                     "cache_read_input_tokens"
                 ]
 
-        cost_per_token = llm_client.cost_per_token
-
         total_tokens_used = (
-            token_usage["total_input_tokens"] + token_usage["total_output_tokens"]
+            token_usage["total_input_tokens"]
+            + token_usage["total_output_tokens"]
+            + token_usage["cache_creation_input_tokens"]
+            + token_usage["cache_read_input_tokens"]
         )
 
-        token_usage["session_cost"] = f"${total_tokens_used * cost_per_token:.4f}"
+        cost_per_token = llm_client.cost_per_token
+
+        final_total_cost = (
+            token_usage["total_input_tokens"] * cost_per_token["input_token_cost"]
+            + token_usage["total_output_tokens"] * cost_per_token["output_token_cost"]
+            + token_usage["cache_creation_input_tokens"]
+            * cost_per_token["cache_write_cost_5m"]
+            + token_usage["cache_read_input_tokens"] * cost_per_token["cache_read_cost"]
+        )
+
+        token_usage["session_cost"] = f"${final_total_cost:.4f}"
         token_usage["context_window_used"] = (
             f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
         )
 
-        self._token_usage = token_usage
+        if not compaction:
+            self._token_usage = token_usage
+
         return token_usage
 
     def calculate_cycle_cost(self, llm_client):
@@ -229,12 +244,23 @@ class Agent:
 
         # Calculate cost (in $) and context window (%) used for this cycle
         total_tokens_used = (
-            cost_stats["total_input_tokens"] + cost_stats["total_output_tokens"]
+            cost_stats["total_input_tokens"]
+            + cost_stats["total_output_tokens"]
+            + cost_stats["cache_creation_input_tokens"]
+            + cost_stats["cache_read_input_tokens"]
         )
 
         cost_per_token = llm_client.cost_per_token
 
-        cost_stats["cost"] = f"${total_tokens_used * cost_per_token:.4f}"
+        final_total_cost = (
+            cost_stats["total_input_tokens"] * cost_per_token["input_token_cost"]
+            + cost_stats["total_output_tokens"] * cost_per_token["output_token_cost"]
+            + cost_stats["cache_creation_input_tokens"]
+            * cost_per_token["cache_write_cost_5m"]
+            + cost_stats["cache_read_input_tokens"] * cost_per_token["cache_read_cost"]
+        )
+
+        cost_stats["cost"] = f"${final_total_cost:.4f}"
         cost_stats["context_window_used"] = (
             f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
         )
@@ -261,11 +287,15 @@ class Agent:
                 formatted_messages = agent.format_state_messages(all_messages)
 
                 # Calculate cost (in $) of session and context (%) used so far
-                token_usage = agent.session_cost(llm_client, all_messages)
+                token_usage = agent.session_cost(
+                    llm_client, all_messages, compaction=True
+                )
 
                 session_context_size = (
                     token_usage["total_input_tokens"]
                     + token_usage["total_output_tokens"]
+                    + token_usage["cache_creation_input_tokens"]
+                    + token_usage["cache_read_input_tokens"]
                 )
 
                 # TODO: Replace 10k by actual context window size but minus 20K avoid context bloating

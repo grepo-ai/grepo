@@ -14,7 +14,6 @@ from langchain_core.messages import RemoveMessage
 from langchain_core.tools.base import BaseTool
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.prebuilt import create_react_agent
-from langgraph.prebuilt.chat_agent_executor import AgentState
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 
@@ -47,14 +46,7 @@ class Agent:
         self._config: dict = config
         self._compiled_graph: CompiledStateGraph = None
         self.auto_compact: bool = auto_compact
-        self._token_usage: dict = {
-            "total_input_tokens": 0,
-            "total_output_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "cache_read_input_tokens": 0,
-            "session_cost": 0.00,
-            "used_context_window_percent": 0.0,
-        }
+        self._token_usage: dict = None
         self._stop_thread = threading.Event()
 
     @property
@@ -68,19 +60,6 @@ class Agent:
     @property
     def token_usage(self):
         return self._token_usage
-
-    def session_cost_stats(self, llm_client: LLMInterface):
-        cost_per_token = llm_client.cost_per_token
-
-        total_tokens_used = (
-            self._token_usage["total_input_tokens"]
-            + self._token_usage["total_output_tokens"]
-        )
-
-        self._token_usage["session_cost"] = f"${total_tokens_used * cost_per_token:.4f}"
-        self._token_usage["used_context_window_percent"] = (
-            f"{(total_tokens_used / 200000) * 100:.2f}%"
-        )
 
     def stop_thread(self):
         self._stop_thread.set()
@@ -107,6 +86,161 @@ class Agent:
             },
         )
 
+    def format_state_messages(self, all_state_messages):
+        formatted_messages = []
+
+        # Calculate total tokens to check if compaction is needed
+        for message in all_state_messages:
+            # Format messages for generating a summary
+            if isinstance(message, HumanMessage):
+                formatted_messages.append(f"<human>{message.content}</human>")
+
+            elif isinstance(message, AIMessage):
+                if isinstance(message.content, list):
+                    for content in message.content:
+                        if (
+                            content.get("text") is not None
+                            and content.get("type") == "text"
+                        ):
+                            formatted_messages.append(f"<ai>{content['text']}<ai>")
+                else:
+                    formatted_messages.append(f"<ai>{message.content}</ai>")
+
+            elif isinstance(message, ToolMessage):
+                if message.content is not None and "Error:" not in message.content:
+                    if isinstance(message.content, list):
+                        tool_messages = ""
+
+                        for tool_message in message.content:
+                            if isinstance(tool_message, list):
+                                for line in tool_message:
+                                    tool_messages += line + " "
+
+                            else:
+                                tool_messages += tool_message + " "
+
+                        formatted_messages.append(
+                            f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
+                        )
+
+                    else:
+                        try:
+                            message_json_content = json.loads(message.content)
+
+                            if isinstance(message_json_content, list):
+                                tool_messages = ""
+
+                                for tool_message in message_json_content:
+                                    if isinstance(tool_message, list):
+                                        for line in tool_message:
+                                            tool_messages += line + " "
+
+                                    else:
+                                        tool_messages += tool_message + " "
+
+                                formatted_messages.append(
+                                    f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
+                                )
+
+                        # Type of message content is str
+                        except json.JSONDecodeError:
+                            formatted_messages.append(
+                                f"<tool> Tool name: {message.name}\n Tool response:{message.content} </tool>"
+                            )
+                            pass
+
+        return formatted_messages
+
+    def session_cost(self, llm_client: LLMInterface, all_state_messages=None):
+        if all_state_messages is None:
+            all_state_messages = self.get_messages()
+
+        token_usage = {
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "session_cost": 0.00,
+            "context_window_used": 0.0,
+        }
+
+        token_usage["total_input_tokens"] = 0
+        token_usage["total_output_tokens"] = 0
+        token_usage["cache_creation_input_tokens"] = 0
+        token_usage["cache_read_input_tokens"] = 0
+
+        # Calculate total tokens to check if compaction is needed
+        for message in all_state_messages:
+            if isinstance(message, AIMessage):
+                response_metadata = message.response_metadata["usage"]
+                token_usage["total_input_tokens"] += response_metadata["input_tokens"]
+                token_usage["total_output_tokens"] += response_metadata["output_tokens"]
+                token_usage["cache_creation_input_tokens"] += response_metadata[
+                    "cache_creation_input_tokens"
+                ]
+                token_usage["cache_read_input_tokens"] += response_metadata[
+                    "cache_read_input_tokens"
+                ]
+
+        cost_per_token = llm_client.cost_per_token
+
+        total_tokens_used = (
+            token_usage["total_input_tokens"] + token_usage["total_output_tokens"]
+        )
+
+        token_usage["session_cost"] = f"${total_tokens_used * cost_per_token:.4f}"
+        token_usage["context_window_used"] = (
+            f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
+        )
+
+        self._token_usage = token_usage
+        return token_usage
+
+    def calculate_cycle_cost(self, llm_client):
+        "This method calculates cost of 1 complete agent loop i.e from human message to AI's final response"
+
+        all_messages = self.get_messages()
+        cost_stats = {
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "cost": 0,
+            "context_window_used": 0,
+        }
+
+        last_message_index = None
+        for index, message in enumerate(all_messages):
+            if isinstance(message, AIMessage):
+                last_message_index = index
+
+        last_message = all_messages[last_message_index]
+
+        response_metadata = last_message.response_metadata["usage"]
+
+        cost_stats["total_input_tokens"] = response_metadata["input_tokens"]
+        cost_stats["total_output_tokens"] = response_metadata["output_tokens"]
+        cost_stats["cache_creation_input_tokens"] = response_metadata[
+            "cache_creation_input_tokens"
+        ]
+        cost_stats["cache_read_input_tokens"] = response_metadata[
+            "cache_read_input_tokens"
+        ]
+
+        # Calculate cost (in $) and context window (%) used for this cycle
+        total_tokens_used = (
+            cost_stats["total_input_tokens"] + cost_stats["total_output_tokens"]
+        )
+
+        cost_per_token = llm_client.cost_per_token
+
+        cost_stats["cost"] = f"${total_tokens_used * cost_per_token:.4f}"
+        cost_stats["context_window_used"] = (
+            f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
+        )
+
+        return cost_stats
+
     def auto_compact_context(self):
         """
         Compaction automatically happens when the chat session is just about to reach context window size
@@ -121,101 +255,17 @@ class Agent:
             llm_client = LLMInterface()
 
             while not agent._stop_thread.is_set():
-                agent._token_usage["total_input_tokens"] = 0
-                agent._token_usage["total_output_tokens"] = 0
-                agent._token_usage["cache_creation_input_tokens"] = 0
-                agent._token_usage["cache_read_input_tokens"] = 0
-
+                # Get all messages in agent state
                 all_messages = agent.get_messages()
 
-                formatted_messages = []
+                formatted_messages = agent.format_state_messages(all_messages)
 
-                # Calculate total tokens to check if compaction is needed
-                for message in all_messages:
-                    if isinstance(message, AIMessage):
-                        response_metadata = message.response_metadata["usage"]
-                        agent._token_usage["total_input_tokens"] += response_metadata[
-                            "input_tokens"
-                        ]
-                        agent._token_usage["total_output_tokens"] += response_metadata[
-                            "output_tokens"
-                        ]
-                        agent._token_usage["cache_creation_input_tokens"] = (
-                            response_metadata["cache_creation_input_tokens"]
-                        )
-                        agent._token_usage["cache_read_input_tokens"] = (
-                            response_metadata["cache_read_input_tokens"]
-                        )
-
-                    # Format messages for generating a summary
-                    if isinstance(message, HumanMessage):
-                        formatted_messages.append(f"<human>{message.content}</human>")
-
-                    elif isinstance(message, AIMessage):
-                        if isinstance(message.content, list):
-                            for content in message.content:
-                                if (
-                                    content.get("text") is not None
-                                    and content.get("type") == "text"
-                                ):
-                                    formatted_messages.append(
-                                        f"<ai>{content['text']}<ai>"
-                                    )
-                        else:
-                            formatted_messages.append(f"<ai>{message.content}</ai>")
-
-                    elif isinstance(message, ToolMessage):
-                        if (
-                            message.content is not None
-                            and "Error:" not in message.content
-                        ):
-                            if isinstance(message.content, list):
-                                tool_messages = ""
-
-                                for tool_message in message.content:
-                                    if isinstance(tool_message, list):
-                                        for line in tool_message:
-                                            tool_messages += line + " "
-
-                                    else:
-                                        tool_messages += tool_message + " "
-
-                                formatted_messages.append(
-                                    f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
-                                )
-
-                            else:
-                                try:
-                                    message_json_content = json.loads(message.content)
-
-                                    if isinstance(message_json_content, list):
-                                        tool_messages = ""
-
-                                        for tool_message in message_json_content:
-                                            if isinstance(tool_message, list):
-                                                for line in tool_message:
-                                                    tool_messages += line + " "
-
-                                            else:
-                                                tool_messages += tool_message + " "
-
-                                        formatted_messages.append(
-                                            f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
-                                        )
-
-                                # Type of message content is str
-                                except json.JSONDecodeError:
-                                    formatted_messages.append(
-                                        f"<tool> Tool name: {message.name}\n Tool response:{message.content} </tool>"
-                                    )
-                                    pass
-
-                # Calculate cost ($) of session and context (%) used so far
-                agent.session_cost_stats(llm_client)
+                # Calculate cost (in $) of session and context (%) used so far
+                token_usage = agent.session_cost(llm_client, all_messages)
 
                 session_context_size = (
-                    agent._token_usage["total_input_tokens"]
-                    + agent._token_usage["total_output_tokens"]
+                    token_usage["total_input_tokens"]
+                    + token_usage["total_output_tokens"]
                 )
 
                 # TODO: Replace 10k by actual context window size but minus 20K avoid context bloating
@@ -232,6 +282,10 @@ class Agent:
                         generated_summary = llm_client.generate_summary(
                             "\n".join(formatted_messages)
                         )
+
+                        # TODO: Handle case when new messages might arrive while compaction is happening and we have not added those
+                        # messages in the summary payload also handle case while performing a re-write of the message history we add
+                        # new messages as it is to the agent state that might get lost during a re-write.
 
                         # Rewrite the message history and update with a summary
                         agent.update_messages(

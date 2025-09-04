@@ -229,14 +229,15 @@ if __name__ == "__main__":
 
                         # Officially marks the end of Agent loop
                         if stop_reason == "end_turn":
-                            console.print(agent.token_usage)
                             agent_cycle_active = False
                             break
 
                 if not agent_cycle_active:
+                    console.print(agent.calculate_cycle_cost(llm_client))
                     break
+
     except KeyboardInterrupt:
         print("--- Ending session ---")
+        console.print(agent.session_cost(llm_client))
         agent.stop_thread()
-        console.print(agent.token_usage)
         print(agent.get_messages())

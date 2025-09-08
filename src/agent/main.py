@@ -48,6 +48,7 @@ class Agent:
         self.auto_compact: bool = auto_compact
         self._token_usage: dict = None
         self._stop_thread = threading.Event()
+        self._last_message_id = (-1, None)
 
     @property
     def config(self):
@@ -224,23 +225,24 @@ class Agent:
             "context_window_used": 0,
         }
 
-        last_message_index = None
         for index, message in enumerate(all_messages):
-            if isinstance(message, AIMessage):
-                last_message_index = index
+            if (
+                isinstance(message, AIMessage)
+                and index > self._last_message_id[0]
+                and self._last_message_id[1] != message.id
+            ):
+                response_metadata = message.response_metadata["usage"]
 
-        last_message = all_messages[last_message_index]
+                cost_stats["total_input_tokens"] += response_metadata["input_tokens"]
+                cost_stats["total_output_tokens"] += response_metadata["output_tokens"]
+                cost_stats["cache_creation_input_tokens"] += response_metadata[
+                    "cache_creation_input_tokens"
+                ]
+                cost_stats["cache_read_input_tokens"] += response_metadata[
+                    "cache_read_input_tokens"
+                ]
 
-        response_metadata = last_message.response_metadata["usage"]
-
-        cost_stats["total_input_tokens"] = response_metadata["input_tokens"]
-        cost_stats["total_output_tokens"] = response_metadata["output_tokens"]
-        cost_stats["cache_creation_input_tokens"] = response_metadata[
-            "cache_creation_input_tokens"
-        ]
-        cost_stats["cache_read_input_tokens"] = response_metadata[
-            "cache_read_input_tokens"
-        ]
+                self._last_message_id = (index, message.id)
 
         # Calculate cost (in $) and context window (%) used for this cycle
         total_tokens_used = (
@@ -291,9 +293,9 @@ class Agent:
                     llm_client, all_messages, compaction=True
                 )
 
+                # TODO: Check if cache_read/ cache_create tokens are counted in context window
                 session_context_size = (
                     token_usage["total_input_tokens"]
-                    + token_usage["total_output_tokens"]
                     + token_usage["cache_creation_input_tokens"]
                     + token_usage["cache_read_input_tokens"]
                 )

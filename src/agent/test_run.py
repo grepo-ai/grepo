@@ -80,7 +80,6 @@ if __name__ == "__main__":
     )
 
     system_prompt = llm_client.get_system_prompt(user_prompt=user_prompt_guidelines)
-    print(llm_client.system_prompt)
 
     # --- Check if user need to resume old session or start new ---
     session_uuid = console.input("Enter a session uuid to resume conversation: ")

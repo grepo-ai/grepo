@@ -5,10 +5,10 @@ from rich.live import Live
 from collections import deque
 
 
-from cli.commands import Commands
-from cli.terminal import GetchRaw, read_keystroke
-from cli.processing import bg_query_processing, bg_query_logs_processing
-from cli.renderables import render_intro, RenderSplits
+from src.cli.commands import Commands
+from src.cli.terminal import GetchRaw, read_keystroke
+from src.cli.processing import bg_query_processing, bg_query_logs_processing
+from src.cli.renderables import render_intro, RenderSplits
 
 
 # Intial screen setup and constants

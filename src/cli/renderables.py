@@ -7,19 +7,19 @@ from rich.box import ROUNDED, SIMPLE
 from rich.spinner import Spinner
 import pyfiglet
 import random
-from cli.commands import Commands
+from src.cli.commands import Commands
 
 
 def render_intro(console):
     console.print("\n")
     text = Text()
-    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#85A1FF")
+    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#8FF4FF")
     console.print(text)
 
     panel = Panel(
-        f"[#FAFAFA]   * Welcome to [#A3B9FF]Grepo[/] * [/] \n\n [#969696]  cwd: {os.getcwd()}[/] \n\n  [#969696] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
+        f"[#FAFAFA]   * Welcome to [#80FFFD]Grepo[/] * [/] \n\n [#F5BE3D]  cwd: {os.getcwd()}[/] \n\n  [#F5BE3D] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
         box=ROUNDED,
-        border_style="#A8C0FF",
+        border_style="#80FFFD",
         expand=False,
         padding=(0, 0, 0, 0),
     )
@@ -30,14 +30,14 @@ def input_render_styles(buffer=None, is_first_time=True, render_alert=None):
     # Render any alerts
     if render_alert:
         renderable_text = f"[#FF6969]> {render_alert}[/]"
-        border_style = "#545454"
+        border_style = "#FF6969"
 
     # Empty buffer shows placeholder text
     elif not buffer and is_first_time:
         renderable_text = (
             '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]'
         )
-        border_style = "#545454"
+        border_style = "#69FFB4"
 
     # Bash command buffer style
     elif buffer and buffer[0] == "#":
@@ -48,7 +48,7 @@ def input_render_styles(buffer=None, is_first_time=True, render_alert=None):
     # Default input bar style
     else:
         renderable_text = f"[#69FFB4]> {buffer}_[/]"
-        border_style = "#545454"
+        border_style = "#69FFB4"
 
     return renderable_text, border_style
 
@@ -62,7 +62,7 @@ class RenderSplits:
         self.output_queue = output_queue
         self._log_history = ""
         self._upper_split_panel = Panel(
-            "[#F35CFF]How can i help you today?[/]",
+            "[#F47AFF]How can i help you today?[/]",
             box=SIMPLE,
             height=0,
         )
@@ -125,7 +125,7 @@ class RenderSplits:
 
         if spin_it:
             self.spinner.renderable = Spinner(
-                "star", text=f"[#FFC375]{status_text}[/]", style="#FFC375"
+                "star", text=f"[#FF7DFC]{status_text}[/]", style="#FF7DFC"
             )
         else:
             self.spinner.renderable = (

@@ -1,17 +1,17 @@
 # Different types of tree sitter queries to extract code symbols
 CODE_SYMBOLS_QUERY_MAP = {
-    "classes": """
+    "class": """
     (class_definition
 
-       name: (identifier) @class_names
+       name: (identifier) @class_name
     ) @classes
 
     """,
-    "functions": """
+    "function": """
     ( function_definition
 
-	name: (identifier) @function_names
-	body: (block) @function_blocks
+	name: (identifier) @function_name
+	body: (block) @function_block
 
      ) @functions
 

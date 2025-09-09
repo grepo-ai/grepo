@@ -198,7 +198,14 @@ cython_debug/
 
 pylate-indexes/
 .venv
+pyvenv.cfg
 
 # Experiments
 cli/rich_experiments.py
 cli/rich_exp2.py
+
+
+# Grepo
+grepo.db
+grepo.db-shm
+grepo.db-wal

@@ -68,7 +68,6 @@ if __name__ == "__main__":
 
     console = Console()
     tree_grep = Tree("[#7CFCA7]-> ● Search[/]")
-
     tree_list = Tree("[#7CFCA7]-> ● List[/]")
     tree_read = Tree("[#7CFCA7]-> ● Read[/]")
 
@@ -76,9 +75,12 @@ if __name__ == "__main__":
     llm_client = LLMInterface(llm_provider="anthropic")
 
     # --- Read GREPO.md for system prompt and instructions ---
-    model_prompt = Path(f"{os.getcwd()}/GREPO.md").read_text(encoding="utf-8")
+    user_prompt_guidelines = Path(f"{os.getcwd()}/AGENTS.md").read_text(
+        encoding="utf-8"
+    )
 
-    system_prompt = llm_client.get_system_prompt(prompt=model_prompt)
+    system_prompt = llm_client.get_system_prompt(user_prompt=user_prompt_guidelines)
+    print(llm_client.system_prompt)
 
     # --- Check if user need to resume old session or start new ---
     session_uuid = console.input("Enter a session uuid to resume conversation: ")

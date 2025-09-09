@@ -1,5 +1,6 @@
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage, HumanMessage
+from agent.state import inject_user_prompt
 
 
 class LLMInterface:
@@ -18,10 +19,15 @@ class LLMInterface:
         self.model = model
         self._cost_per_token = self._get_cost_per_token()
         self._context_window_size = self._get_context_window_size()
+        self._system_prompt = None
 
     @property
     def cost_per_token(self):
         return self._cost_per_token
+
+    @property
+    def system_prompt(self):
+        return self._system_prompt
 
     def _get_context_window_size(self):
         if self.llm_provider == "anthropic":
@@ -50,13 +56,15 @@ class LLMInterface:
 
         return llm_client
 
-    def get_system_prompt(self, prompt):
+    def get_system_prompt(self, user_prompt):
+        self._system_prompt = inject_user_prompt(user_prompt)
+
         if self.llm_provider == "anthropic":
             system_prompt = SystemMessage(
                 content=[
                     {
                         "type": "text",
-                        "text": prompt,
+                        "text": self._system_prompt,
                         "cache_control": {"type": "ephemeral"},
                     }
                 ]

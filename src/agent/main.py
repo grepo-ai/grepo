@@ -296,6 +296,7 @@ class Agent:
                 # TODO: Check if cache_read/ cache_create tokens are counted in context window
                 session_context_size = (
                     token_usage["total_input_tokens"]
+                    + token_usage["total_output_tokens"]
                     + token_usage["cache_creation_input_tokens"]
                     + token_usage["cache_read_input_tokens"]
                 )

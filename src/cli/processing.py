@@ -1,17 +1,32 @@
 import time
 import queue
 import threading
+from src.agent.main import invoke_agent, initiate_agent
 
 
 def bg_query_processing(
-    buffer, console, query_queue=None, output_queue=None, lock=None, stop_event=None
+    buffer,
+    console,
+    query_queue=None,
+    output_queue=None,
+    lock=None,
+    stop_event=None,
 ):
+    # --- Initiate Agent --- #
+    session_uuid, agent_dict, llm_client, ui_renders = initiate_agent()
+
     while not stop_event.is_set():
         try:
             query = query_queue.get(timeout=1)
-            if query:
-                output_queue.append(f"{query}")
-
+            if query is not None:
+                invoke_agent(
+                    session_uuid,
+                    agent_dict,
+                    llm_client,
+                    ui_renders,
+                    query,
+                    output_queue,
+                )
         except queue.Empty:
             continue
 

@@ -1,4 +1,5 @@
 import os
+import time
 from rich.console import Group
 from rich.text import Text
 from rich.panel import Panel
@@ -57,7 +58,6 @@ class RenderSplits:
     def __init__(self, output_queue, lock):
         self.blank_box = Box("    \n" * 8, ascii=True)
         self.lock = lock
-        self._last_log_count = 0
         self._previous_buffer = ""
         self.output_queue = output_queue
         self._log_history = ""
@@ -83,26 +83,17 @@ class RenderSplits:
         )
 
     def update_upper_split(self):
-        import time
+        while len(self.output_queue) != 0:
+            log_message, console = self.output_queue.popleft()
+            # self._log_history += f"{log_message}\n"
 
-        if self.output_queue and len(self.output_queue) != self._last_log_count:
-            while self.output_queue:
-                log_message = self.output_queue.popleft()
-                self._log_history += f"{log_message}\n"
-                self.update_spinner(spin_it=True)
+            self.update_spinner(spin_it=True)
+            time.sleep(1)
 
-                # TODO: Remove this when integrating agent flow
-                time.sleep(2)
+            self._upper_split_panel.renderable = log_message
 
-            # Render the logs obtained until now
-            render_logs = self._log_history
-
-            self._upper_split_panel.renderable = f"[#CFCFCF]{render_logs}[/]"
             # TODO add dynamic re-sizing and auto-scrolling logic
-            self._upper_split_panel.height = 5
-
-            # Update last log count this is done to avoid frequent updates when no new logs arrived
-            self._last_log_count = len(self.output_queue)
+            self._upper_split_panel.height = 20
 
     def update_lower_split(
         self, console, buffer, is_first_time=True, render_alert=False
@@ -118,14 +109,14 @@ class RenderSplits:
         self._previous_buffer = buffer
 
     def update_spinner(self, spin_it=True, status_text=None):
-        status_fillers = ["Thinking hard like jelly...", "Chewing GPUs..."]
+        status_fillers = ["Jellying...", "Chewing GPUs...", "Poking intelligence..."]
 
         if not status_text:
             status_text = random.choice(status_fillers)
 
         if spin_it:
             self.spinner.renderable = Spinner(
-                "star", text=f"[#FF7DFC]{status_text}[/]", style="#FF7DFC"
+                "star", text=f"[#FF804A]{status_text}[/]", style="#FF804A"
             )
         else:
             self.spinner.renderable = (

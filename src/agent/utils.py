@@ -15,9 +15,9 @@ def get_checkpointer():
 
 
 # Create chat sessions
-def generate_session_uuid():
+def generate_session_uuid(console):
     thread_uuid = uuid.uuid4().hex
-    print(f"------ New session created with uuid {thread_uuid} ----")
+    console.print(f"[#7CFCA7]session id - {thread_uuid}[/]")
     return thread_uuid
 
 

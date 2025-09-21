@@ -27,6 +27,9 @@ if __name__ == "__main__":
     output_queue = deque()
     buffer = ""
 
+    # Create split regions for query processing and input bar
+    split_screens = RenderSplits(output_queue=output_queue, lock=lock)
+
     thread_kwargs = {
         "query_queue": query_queue,
         "output_queue": output_queue,
@@ -37,18 +40,12 @@ if __name__ == "__main__":
     # Thread for processing input queries
     input_processing_thread = threading.Thread(
         target=bg_query_processing,
-        args=(
-            buffer,
-            console,
-        ),
+        args=(buffer, console, split_screens),
         kwargs=thread_kwargs,
         daemon=True,
     )
 
     input_processing_thread.start()
-
-    # Create split regions for query processing and input bar
-    split_screens = RenderSplits(output_queue=output_queue, lock=lock)
 
     # Thread to process queries in-process logs
     logs_processing_thread = threading.Thread(

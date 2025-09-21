@@ -470,7 +470,13 @@ def initiate_agent(session_uuid=None, model_provider="anthropic"):
 
 
 def invoke_agent(
-    session_uuid, agent_dict, llm_client, ui_renders, human_input, output_queue
+    renderable_splits,
+    session_uuid,
+    agent_dict,
+    llm_client,
+    ui_renders,
+    human_input,
+    output_queue,
 ):
     agent = agent_dict["agent"]
     agent_config = agent_dict["agent_config"]
@@ -487,13 +493,13 @@ def invoke_agent(
     agent_cycle_active = True
 
     while agent_cycle_active:
+        renderable_splits.update_spinner(spin_it=True)
+
         running_agent = agent.stream(
             input=input_type,
         )
 
         for stream_message in running_agent:
-            # print(stream_message)
-            # print("\n\n")
             # Stream chunk type 1: Agent response
             if stream_message.get("agent"):
                 ai_messages = stream_message["agent"]["messages"][0].content
@@ -598,3 +604,5 @@ def invoke_agent(
                 if stop_reason == "end_turn":
                     agent_cycle_active = False
                     break
+
+    renderable_splits.update_spinner(spin_it=False)

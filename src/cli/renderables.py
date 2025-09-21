@@ -64,7 +64,7 @@ class RenderSplits:
         self._upper_split_panel = Panel(
             "[#F47AFF]How can i help you today?[/]",
             box=SIMPLE,
-            height=0,
+            height=20,
         )
         self._lower_split_panel = Panel(
             '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]',
@@ -82,18 +82,19 @@ class RenderSplits:
             "[dim]Press ? for shortcuts[/]", box=SIMPLE, height=0
         )
 
-    def update_upper_split(self):
-        while len(self.output_queue) != 0:
-            log_message, console = self.output_queue.popleft()
-            # self._log_history += f"{log_message}\n"
+    def update_upper_split(self, renderable_data=""):
+        if renderable_data:
+            self._upper_split_panel.renderable = renderable_data
 
-            self.update_spinner(spin_it=True)
-            time.sleep(1)
+        else:
+            while len(self.output_queue) != 0:
+                log_message, console = self.output_queue.popleft()
+                # self._log_history += f"{log_message}\n"
 
-            self._upper_split_panel.renderable = log_message
+                self._upper_split_panel.renderable = log_message
 
-            # TODO add dynamic re-sizing and auto-scrolling logic
-            self._upper_split_panel.height = 20
+                # TODO add dynamic re-sizing and auto-scrolling logic
+                # self._upper_split_panel.height = 20
 
     def update_lower_split(
         self, console, buffer, is_first_time=True, render_alert=False

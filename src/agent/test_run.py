@@ -84,7 +84,7 @@ if __name__ == "__main__":
     # --- Check if user need to resume old session or start new ---
     session_uuid = console.input("Enter a session uuid to resume conversation: ")
     if not session_uuid:
-        session_uuid = generate_session_uuid()
+        session_uuid = generate_session_uuid(console)
 
     agent_config = {
         "configurable": {"thread_id": session_uuid},

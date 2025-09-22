@@ -1,11 +1,8 @@
 import os
-import re
-import uuid
 import json
 import time
 import threading
-from typing import Annotated, Union, Optional
-from typing_extensions import TypedDict
+from typing import Union, Optional
 
 
 from langgraph.graph.state import CompiledStateGraph
@@ -14,6 +11,7 @@ from langchain_core.tools.base import BaseTool
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.types import Command
 
 
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
@@ -24,33 +22,11 @@ from agent.state import GlobalState
 from agent.llm import LLMInterface
 
 
-import os
-import re
-import uuid
-import json
-import time
-from typing import Annotated, Union
-from typing_extensions import TypedDict
-
 from rich.console import Console
 from rich.tree import Tree
 from pathlib import Path
 from rich.markdown import Markdown
 
-
-from langchain_anthropic import ChatAnthropic
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.state import CompiledStateGraph
-from langgraph.graph.message import add_messages
-from langchain_core.tools import tool
-from langchain_core.messages import RemoveMessage
-from langgraph.graph.message import REMOVE_ALL_MESSAGES
-from langgraph.prebuilt import ToolNode, tools_condition, create_react_agent
-from langchain_core.messages import AnyMessage, SystemMessage, HumanMessage, AIMessage
-from langgraph.prebuilt.chat_agent_executor import AgentState
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.checkpoint.sqlite import SqliteSaver
-from langgraph.types import Command, interrupt
 
 # ---- Langfuse ---
 from agent.tracing import langfuse_handler
@@ -94,7 +70,7 @@ class Agent:
         self._config: dict = config
         self._compiled_graph: CompiledStateGraph = None
         self.auto_compact: bool = auto_compact
-        self._token_usage: dict = None
+        self._cycle_stats: dict = None
         self._stop_thread = threading.Event()
         self._last_message_id = (-1, None)
 
@@ -107,8 +83,12 @@ class Agent:
         return self._compiled_graph.get_state(self._config)
 
     @property
-    def token_usage(self):
-        return self._token_usage
+    def cycle_stats(self):
+        return self._cycle_stats
+
+    @cycle_stats.setter
+    def cycle_stats(self, stats_dict):
+        self._cycle_stats = stats_dict
 
     def stop_thread(self):
         self._stop_thread.set()
@@ -119,8 +99,7 @@ class Agent:
     def update_messages(self, messages, compact=False):
         if compact:
             new_messages = [RemoveMessage(id=REMOVE_ALL_MESSAGES), *messages]
-
-        self._compiled_graph.update_state(self._config, {"messages": new_messages})
+            self._compiled_graph.update_state(self._config, {"messages": new_messages})
 
     def clear_session(
         self,
@@ -138,7 +117,6 @@ class Agent:
     def format_state_messages(self, all_state_messages):
         formatted_messages = []
 
-        # Calculate total tokens to check if compaction is needed
         for message in all_state_messages:
             # Format messages for generating a summary
             if isinstance(message, HumanMessage):
@@ -200,11 +178,8 @@ class Agent:
 
         return formatted_messages
 
-    def session_cost(
-        self, llm_client: LLMInterface, all_state_messages=None, compaction=False
-    ):
-        if all_state_messages is None:
-            all_state_messages = self.get_messages()
+    def session_cost(self, llm_client: LLMInterface, compaction=False):
+        all_state_messages = self.get_messages()
 
         token_usage = {
             "total_input_tokens": 0,
@@ -255,15 +230,14 @@ class Agent:
             f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
         )
 
-        if not compaction:
-            self._token_usage = token_usage
-
         return token_usage
 
-    def calculate_cycle_cost(self, llm_client):
+    def calculate_cycle_cost(self, llm_client, all_messages=None):
         "This method calculates cost of 1 complete agent loop i.e from human message to AI's final response"
 
-        all_messages = self.get_messages()
+        if all_messages is None:
+            all_messages = self.get_messages()
+
         cost_stats = {
             "total_input_tokens": 0,
             "total_output_tokens": 0,
@@ -315,6 +289,7 @@ class Agent:
             f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
         )
 
+        self._cycle_stats = cost_stats
         return cost_stats
 
     def auto_compact_context(self):
@@ -337,19 +312,23 @@ class Agent:
                 formatted_messages = agent.format_state_messages(all_messages)
 
                 # Calculate cost (in $) of session and context (%) used so far
-                token_usage = agent.session_cost(
-                    llm_client, all_messages, compaction=True
+                cycle_cost = agent.cycle_stats
+                if not cycle_cost:
+                    continue
+
+                print(cycle_cost)
+                print("######")
+                session_context_size = (
+                    cycle_cost["total_input_tokens"]
+                    + cycle_cost["total_output_tokens"]
+                    + cycle_cost["cache_creation_input_tokens"]
+                    + cycle_cost["cache_read_input_tokens"]
                 )
 
-                session_context_size = (
-                    token_usage["total_input_tokens"]
-                    + token_usage["total_output_tokens"]
-                    + token_usage["cache_creation_input_tokens"]
-                    + token_usage["cache_read_input_tokens"]
-                )
-                print(session_context_size)
                 # TODO: Replace 10k by actual context window size but minus 20K avoid context bloating
-                if session_context_size > 10000:
+                if session_context_size > 1000 or float(
+                    cycle_cost["context_window_used"][:-1]
+                ) >= float(f"{95:.2f}"):
                     print("------ Attempting Compaction -----")
                     # Compact only when agent loop has ended and there are no tool calls remaining
                     last_message = agent.get_messages()[-1]
@@ -362,6 +341,37 @@ class Agent:
                         generated_summary = llm_client.generate_summary(
                             "\n".join(formatted_messages)
                         )
+
+                        summarised_all_messages = agent.get_messages()
+                        cost_stats = {
+                            "total_input_tokens": 0,
+                            "total_output_tokens": 0,
+                            "cache_creation_input_tokens": 0,
+                            "cache_read_input_tokens": 0,
+                        }
+
+                        for index, message in enumerate(summarised_all_messages):
+                            if isinstance(message, AIMessage):
+                                response_metadata = message.response_metadata["usage"]
+
+                                cost_stats["total_input_tokens"] += response_metadata[
+                                    "input_tokens"
+                                ]
+                                cost_stats["total_output_tokens"] += response_metadata[
+                                    "output_tokens"
+                                ]
+                                cost_stats["cache_creation_input_tokens"] += (
+                                    response_metadata["cache_creation_input_tokens"]
+                                )
+                                cost_stats["cache_read_input_tokens"] += (
+                                    response_metadata["cache_read_input_tokens"]
+                                )
+
+                        # Update the stats after compaction
+                        agent.cycle_stats = cost_stats
+                        print("^^^^^^^^^^")
+                        print(cost_stats)
+                        print(agent.cycle_stats)
 
                         # TODO: Handle case when new messages might arrive while compaction is happening and we have not added those
                         # messages in the summary payload also handle case while performing a re-write of the message history we add
@@ -380,7 +390,7 @@ class Agent:
                         print("------ Compaction Completed ------")
 
                 # Poll every 10 secs and check if compaction is required (keeping it time based for now to simply logic)
-                time.sleep(10)
+                time.sleep(5)
 
         if self.auto_compact:
             # Run compaction in background thread
@@ -451,13 +461,7 @@ def initiate_agent(session_uuid=None, model_provider="anthropic"):
         auto_compact=True,
     )
 
-    # --- Compile the graph for agent ---
     agent._create()
-
-    # Add graph state variables :
-    # 1. preference for edit files
-    # 2. files or dirs to be ignored
-    # 3. language of the repo
 
     ui_renders = {
         "console": console,
@@ -607,3 +611,4 @@ def invoke_agent(
 
     renderable_splits.update_spinner(spin_it=False)
     renderable_splits.renderable_data = agent.session_cost(llm_client)
+    print(agent.get_messages())

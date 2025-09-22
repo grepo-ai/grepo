@@ -43,4 +43,3 @@ def bg_query_logs_processing(
 ):
     while not stop_event.is_set():
         renderable_splits.update_upper_split()
-        # renderable_splits.update_spinner(spin_it=False)

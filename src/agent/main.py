@@ -606,3 +606,4 @@ def invoke_agent(
                     break
 
     renderable_splits.update_spinner(spin_it=False)
+    renderable_splits.renderable_data = agent.session_cost(llm_client)

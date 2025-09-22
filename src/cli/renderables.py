@@ -1,5 +1,4 @@
 import os
-import time
 from rich.console import Group
 from rich.text import Text
 from rich.panel import Panel
@@ -61,10 +60,11 @@ class RenderSplits:
         self._previous_buffer = ""
         self.output_queue = output_queue
         self._log_history = ""
+        self._renderable_data = {}
         self._upper_split_panel = Panel(
             "[#F47AFF]How can i help you today?[/]",
             box=SIMPLE,
-            height=20,
+            height=10,
         )
         self._lower_split_panel = Panel(
             '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]',
@@ -81,6 +81,14 @@ class RenderSplits:
         self._footer_split_panel = Panel(
             "[dim]Press ? for shortcuts[/]", box=SIMPLE, height=0
         )
+
+    @property
+    def renderable_data(self):
+        return self._renderable_data
+
+    @renderable_data.setter
+    def renderable_data(self, data_dict):
+        self._renderable_data = data_dict
 
     def update_upper_split(self, renderable_data=""):
         if renderable_data:
@@ -140,7 +148,22 @@ class RenderSplits:
             self._footer_split_panel.height = 8
 
         elif exit_screen:
-            self._footer_split_panel.renderable = """<TODO: show actual usage stats>\nInput Token usage: 1000\nTotal cost: $0.52\nModels used: Kimi-2, Mixtral"""
+            render_data = ""
+            token_usage_keys = {
+                "total_input_tokens": "Total Input Tokens",
+                "total_output_tokens": "Total Output Tokens",
+                "cache_creation_input_tokens": "Cache Write Tokens",
+                "cache_read_input_tokens": "Cache Read Tokens",
+                "session_cost": "Total Cost ($)",
+                "context_window_used": "Total Context Used",
+            }
+
+            if self.renderable_data:
+                render_data = "--- Session Cost --- \n"
+                for key, value in self.renderable_data.items():
+                    render_data += f"{token_usage_keys.get(key)}: {value}\n"
+
+            self._footer_split_panel.renderable = f"[#F47AFF]{render_data}[/]"
             self._footer_split_panel.height = 8
 
         elif blank:

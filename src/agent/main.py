@@ -316,8 +316,6 @@ class Agent:
                 if not cycle_cost:
                     continue
 
-                print(cycle_cost)
-                print("######")
                 session_context_size = (
                     cycle_cost["total_input_tokens"]
                     + cycle_cost["total_output_tokens"]
@@ -326,7 +324,7 @@ class Agent:
                 )
 
                 # TODO: Replace 10k by actual context window size but minus 20K avoid context bloating
-                if session_context_size > 1000 or float(
+                if session_context_size > 10000 or float(
                     cycle_cost["context_window_used"][:-1]
                 ) >= float(f"{95:.2f}"):
                     print("------ Attempting Compaction -----")
@@ -348,6 +346,7 @@ class Agent:
                             "total_output_tokens": 0,
                             "cache_creation_input_tokens": 0,
                             "cache_read_input_tokens": 0,
+                            "context_window_used": "0%",
                         }
 
                         for index, message in enumerate(summarised_all_messages):
@@ -367,11 +366,8 @@ class Agent:
                                     response_metadata["cache_read_input_tokens"]
                                 )
 
-                        # Update the stats after compaction
+                        # Update the cost stats after compaction
                         agent.cycle_stats = cost_stats
-                        print("^^^^^^^^^^")
-                        print(cost_stats)
-                        print(agent.cycle_stats)
 
                         # TODO: Handle case when new messages might arrive while compaction is happening and we have not added those
                         # messages in the summary payload also handle case while performing a re-write of the message history we add
@@ -611,4 +607,3 @@ def invoke_agent(
 
     renderable_splits.update_spinner(spin_it=False)
     renderable_splits.renderable_data = agent.session_cost(llm_client)
-    print(agent.get_messages())

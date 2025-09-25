@@ -120,7 +120,9 @@ class Agent:
         for message in all_state_messages:
             # Format messages for generating a summary
             if isinstance(message, HumanMessage):
-                formatted_messages.append(f"<human>{message.content}</human>")
+                formatted_messages.append(
+                    f"<human query>{message.content}</human query>"
+                )
 
             elif isinstance(message, AIMessage):
                 if isinstance(message.content, list):
@@ -129,11 +131,30 @@ class Agent:
                             content.get("text") is not None
                             and content.get("type") == "text"
                         ):
-                            formatted_messages.append(f"<ai>{content['text']}<ai>")
+                            formatted_messages.append(
+                                f"<ai response>{content['text']}</ai response>"
+                            )
+
+                        if content.get("type") == "tool_use":
+                            tool_message = ""
+                            for tool_call in message.tool_calls:
+                                tool_message += (
+                                    f"<tool call>tool_name: {tool_call['name']} -- "
+                                )
+                                for key, value in tool_call["args"].items():
+                                    tool_message += (
+                                        f"arg_name:{key},arg_value:{value}\n"
+                                    )
+                            tool_message += " </tool call>"
+                            formatted_messages.append(tool_message)
+
                 else:
-                    formatted_messages.append(f"<ai>{message.content}</ai>")
+                    formatted_messages.append(
+                        f"<ai response>{message.content}</ai response>"
+                    )
 
             elif isinstance(message, ToolMessage):
+                # Successful tool call response
                 if message.content is not None and "Error:" not in message.content:
                     if isinstance(message.content, list):
                         tool_messages = ""
@@ -147,7 +168,7 @@ class Agent:
                                 tool_messages += tool_message + " "
 
                         formatted_messages.append(
-                            f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
+                            f"<tool response> Tool name: {message.name}\n Tool response:{tool_messages} </tool response>"
                         )
 
                     else:
@@ -166,15 +187,21 @@ class Agent:
                                         tool_messages += tool_message + " "
 
                                 formatted_messages.append(
-                                    f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
+                                    f"<tool response> Tool name: {message.name}\n Tool response:{tool_messages} </tool response>"
                                 )
 
                         # Type of message content is str
                         except json.JSONDecodeError:
                             formatted_messages.append(
-                                f"<tool> Tool name: {message.name}\n Tool response:{message.content} </tool>"
+                                f"<tool response> Tool name: {message.name}\n Tool response:{message.content} </tool response>"
                             )
                             pass
+
+                # Error tool call response
+                elif message.content is not None and "Error:" in message.content:
+                    formatted_messages.append(
+                        f"<tool response> Tool name: {message.name}\n Tool response:{message.content} </tool response>"
+                    )
 
         return formatted_messages
 
@@ -327,6 +354,8 @@ class Agent:
                 if session_context_size > 10000 or float(
                     cycle_cost["context_window_used"][:-1]
                 ) >= float(f"{95:.2f}"):
+                    print("---- cycle costs before compaction ----")
+                    print(cycle_cost)
                     print("------ Attempting Compaction -----")
                     # Compact only when agent loop has ended and there are no tool calls remaining
                     last_message = agent.get_messages()[-1]
@@ -339,35 +368,6 @@ class Agent:
                         generated_summary = llm_client.generate_summary(
                             "\n".join(formatted_messages)
                         )
-
-                        summarised_all_messages = agent.get_messages()
-                        cost_stats = {
-                            "total_input_tokens": 0,
-                            "total_output_tokens": 0,
-                            "cache_creation_input_tokens": 0,
-                            "cache_read_input_tokens": 0,
-                            "context_window_used": "0%",
-                        }
-
-                        for index, message in enumerate(summarised_all_messages):
-                            if isinstance(message, AIMessage):
-                                response_metadata = message.response_metadata["usage"]
-
-                                cost_stats["total_input_tokens"] += response_metadata[
-                                    "input_tokens"
-                                ]
-                                cost_stats["total_output_tokens"] += response_metadata[
-                                    "output_tokens"
-                                ]
-                                cost_stats["cache_creation_input_tokens"] += (
-                                    response_metadata["cache_creation_input_tokens"]
-                                )
-                                cost_stats["cache_read_input_tokens"] += (
-                                    response_metadata["cache_read_input_tokens"]
-                                )
-
-                        # Update the cost stats after compaction
-                        agent.cycle_stats = cost_stats
 
                         # TODO: Handle case when new messages might arrive while compaction is happening and we have not added those
                         # messages in the summary payload also handle case while performing a re-write of the message history we add
@@ -383,7 +383,58 @@ class Agent:
                             ],
                             compact=True,
                         )
+
+                        # Reset the last message index (TODO: Check Linear ticket GREP-56)
+                        agent._last_message_id = (-1, None)
                         print("------ Compaction Completed ------")
+
+                        # Update the cost stats after compaction
+                        cost_stats = {
+                            "total_input_tokens": generated_summary.response_metadata[
+                                "usage"
+                            ]["input_tokens"],
+                            "total_output_tokens": generated_summary.response_metadata[
+                                "usage"
+                            ]["output_tokens"],
+                            "cache_creation_input_tokens": generated_summary.response_metadata[
+                                "usage"
+                            ]["cache_creation_input_tokens"],
+                            "cache_read_input_tokens": generated_summary.response_metadata[
+                                "usage"
+                            ]["cache_read_input_tokens"],
+                            "cost": 0,
+                            "context_window_used": 0,
+                        }
+
+                        cost_per_token = llm_client.cost_per_token
+
+                        final_total_cost = (
+                            cost_stats["total_input_tokens"]
+                            * cost_per_token["input_token_cost"]
+                            + cost_stats["total_output_tokens"]
+                            * cost_per_token["output_token_cost"]
+                            + cost_stats["cache_creation_input_tokens"]
+                            * cost_per_token["cache_write_cost_5m"]
+                            + cost_stats["cache_read_input_tokens"]
+                            * cost_per_token["cache_read_cost"]
+                        )
+
+                        cost_stats["cost"] = f"${final_total_cost:.4f}"
+
+                        # Calculate cost (in $) and context window (%) used for this cycle
+                        total_tokens_used = (
+                            cost_stats["total_input_tokens"]
+                            + cost_stats["total_output_tokens"]
+                            + cost_stats["cache_creation_input_tokens"]
+                            + cost_stats["cache_read_input_tokens"]
+                        )
+
+                        cost_stats["context_window_used"] = (
+                            f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
+                        )
+                        agent.cycle_stats = cost_stats
+                        print("------ cycle costs after compaction ------")
+                        print(agent.cycle_stats)
 
                 # Poll every 10 secs and check if compaction is required (keeping it time based for now to simply logic)
                 time.sleep(5)

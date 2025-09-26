@@ -573,13 +573,6 @@ def invoke_agent(
                 # Check type of tool and populate tree alerts accordingly
                 tool_name = stream_message["tools"]["messages"][0].name
                 tool_message = stream_message["tools"]["messages"][0].content
-                print(tool_name)
-                print("************")
-                if tool_name == "get_code_block":
-                    print(tool_message)
-
-                if tool_name == "glob":
-                    print(tool_message)
 
                 # List files
                 if tool_name == "list_files" or "Error:" in tool_message:
@@ -591,15 +584,13 @@ def invoke_agent(
                 elif tool_name == "read_file":
                     if tool_message is None or "Error:" in tool_message:
                         continue
-                    print("###########")
-                    print(tool_message[:50])
+
                     read_file_data = json.loads(tool_message)
                     code_snippet, file_path = construct_code(
                         read_file_data, truncate=True
                     )
 
                     tree_read.add(f"[#FA5CB3]Reading ({file_path})[/]")
-
                     output_queue.append((tree_read, console))
 
                 # Grep file(s)

@@ -1,12 +1,15 @@
 import os
+from dataclasses import dataclass
+import pyfiglet
+import random
+
+
 from rich.console import Group
 from rich.text import Text
 from rich.panel import Panel
 from rich.box import Box
 from rich.box import ROUNDED, SIMPLE
 from rich.spinner import Spinner
-import pyfiglet
-import random
 from src.cli.commands import Commands
 
 
@@ -53,6 +56,13 @@ def input_render_styles(buffer=None, is_first_time=True, render_alert=None):
     return renderable_text, border_style
 
 
+# TODO: Complete the logic for rendering logs in a stateful manner and dynamically increase the Panel
+# height as logs are rendered on screen
+@dataclass
+class AgentLogs:
+    pass
+
+
 class RenderSplits:
     def __init__(self, output_queue, lock):
         self.blank_box = Box("    \n" * 8, ascii=True)
@@ -64,7 +74,7 @@ class RenderSplits:
         self._upper_split_panel = Panel(
             "[#F47AFF]How can i help you today?[/]",
             box=SIMPLE,
-            height=10,
+            height=20,
         )
         self._lower_split_panel = Panel(
             '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]',
@@ -90,19 +100,9 @@ class RenderSplits:
     def renderable_data(self, data_dict):
         self._renderable_data = data_dict
 
-    def update_upper_split(self, renderable_data=""):
+    def update_upper_split(self, renderable_data=None, **kwargs):
         if renderable_data:
             self._upper_split_panel.renderable = renderable_data
-
-        else:
-            while len(self.output_queue) != 0:
-                log_message, console = self.output_queue.popleft()
-                # self._log_history += f"{log_message}\n"
-
-                self._upper_split_panel.renderable = log_message
-
-                # TODO add dynamic re-sizing and auto-scrolling logic
-                # self._upper_split_panel.height = 20
 
     def update_lower_split(
         self, console, buffer, is_first_time=True, render_alert=False
@@ -125,7 +125,7 @@ class RenderSplits:
 
         if spin_it:
             self.spinner.renderable = Spinner(
-                "star", text=f"[#FF804A]{status_text}[/]", style="#FF804A"
+                "star", text=f"[#FFB82B]{status_text}[/]", style="#FFB82B"
             )
         else:
             self.spinner.renderable = (
@@ -155,16 +155,20 @@ class RenderSplits:
                 "cache_creation_input_tokens": "Cache Write Tokens",
                 "cache_read_input_tokens": "Cache Read Tokens",
                 "session_cost": "Total Cost ($)",
-                "context_window_used": "Total Context Used",
             }
 
             if self.renderable_data:
-                render_data = "--- Session Cost --- \n"
                 for key, value in self.renderable_data.items():
+                    if key == "context_window_used":
+                        continue
                     render_data += f"{token_usage_keys.get(key)}: {value}\n"
 
-            self._footer_split_panel.renderable = f"[#F47AFF]{render_data}[/]"
-            self._footer_split_panel.height = 8
+            if render_data:
+                self._footer_split_panel.renderable = f"[#F47AFF]{render_data}[/]"
+                self._footer_split_panel.box = ROUNDED
+                self._footer_split_panel.title = "Session Stats"
+                self._footer_split_panel.border_style = "#8FF4FF"
+                self._footer_split_panel.height = 7
 
         elif blank:
             self._footer_split_panel.renderable = "[dim]Press ? for shortcuts[/]"

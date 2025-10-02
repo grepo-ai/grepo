@@ -1,3 +1,4 @@
+import os
 import threading
 from queue import SimpleQueue
 from rich.console import Console
@@ -5,6 +6,7 @@ from rich.live import Live
 from collections import deque
 
 
+from src.agent.utils import generate_session_uuid
 from src.cli.commands import Commands
 from src.cli.terminal import GetchRaw, read_keystroke
 from src.cli.processing import bg_query_processing, bg_query_logs_processing
@@ -18,6 +20,13 @@ console = Console()
 if __name__ == "__main__":
     # Welcome screen and (add intial model/api-key settings via arrow keys and toggle -> TODO)
     render_intro(console)
+
+    # Get root dir to read AGENTS.md file
+    root_dir = os.getcwd()
+
+    # Chat session uuid
+    session_uuid = generate_session_uuid()
+    console.print(f"[#7CFCA7]-> session id: {session_uuid}[/]")
 
     # Thread initials
     lock = threading.Lock()
@@ -39,7 +48,7 @@ if __name__ == "__main__":
     # Thread for processing input queries
     input_processing_thread = threading.Thread(
         target=bg_query_processing,
-        args=(buffer, console, split_screens),
+        args=(root_dir, buffer, console, split_screens, session_uuid),
         kwargs=thread_kwargs,
         daemon=True,
     )

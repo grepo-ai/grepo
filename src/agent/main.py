@@ -3,6 +3,8 @@ import json
 import time
 import threading
 from typing import Union, Optional
+from collections import deque
+from pathlib import Path
 
 
 from langgraph.graph.state import CompiledStateGraph
@@ -24,7 +26,7 @@ from agent.llm import LLMInterface
 
 from rich.console import Console
 from rich.tree import Tree
-from pathlib import Path
+from rich.syntax import Syntax
 from rich.markdown import Markdown
 
 
@@ -43,7 +45,6 @@ from agent.tools import (
 )
 from agent.utils import (
     get_checkpointer,
-    generate_session_uuid,
     construct_code,
     format_grep_results,
 )
@@ -52,31 +53,55 @@ from agent.utils import (
 class Agent:
     def __init__(
         self,
-        model,
+        root_dir: str,
+        model: str,
+        provider: str,
+        output_queue: deque,
         tools: list,
-        schema,
-        checkpointer,
-        system_prompt: str,
+        schema: GlobalState,
+        checkpointer: SqliteSaver,
+        session_uuid: str,
         stream_mode: Union[str, list],
         config: dict = {},
         auto_compact: bool = False,
     ):
-        self.model: Union[ChatAnthropic, None] = model
-        self.system_prompt: SystemMessage = system_prompt
+        self.llm_client = LLMInterface(model=model, llm_provider=provider)
+        self.model_interface: Union[ChatAnthropic, None] = self.llm_client.client()
+        self.system_prompt: SystemMessage = self._get_system_prompt(root_dir)
         self.tools: list[BaseTool] = tools
         self.state_schema: GlobalState = schema
         self.stream_mode: Optional[list[str]] = stream_mode
         self.checkpointer: SqliteSaver = checkpointer
-        self._config: dict = config
+        self.session_uuid = session_uuid
+        self._config: dict = config if config else self._get_config()
         self._compiled_graph: CompiledStateGraph = None
         self.auto_compact: bool = auto_compact
         self._cycle_stats: dict = None
         self._stop_thread = threading.Event()
         self._last_message_id = (-1, None)
+        self._output_queue = output_queue
+        self._ui_renders = {}
+
+    def _get_system_prompt(self, root_dir):
+        # --- Read GREPO.md for system prompt and instructions ---
+        user_prompt_guidelines = Path(f"{root_dir}/AGENTS.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.system_prompt = self.llm_client.get_system_prompt(
+            user_prompt=user_prompt_guidelines
+        )
 
     @property
     def config(self):
         return self._config
+
+    def _get_config(self):
+        return {
+            "configurable": {"thread_id": self.session_uuid},
+            "recursion_limit": 50,
+            "callbacks": [langfuse_handler],
+        }
 
     @property
     def agent_state(self):
@@ -436,7 +461,7 @@ class Agent:
                         print("------ cycle costs after compaction ------")
                         print(agent.cycle_stats)
 
-                # Poll every 10 secs and check if compaction is required (keeping it time based for now to simply logic)
+                # Poll every 5 secs and check if compaction is required (keeping it time based for now to simplify logic)
                 time.sleep(5)
 
         if self.auto_compact:
@@ -450,7 +475,7 @@ class Agent:
 
     def _create(self):
         self._compiled_graph = create_react_agent(
-            self.model,
+            self.model_interface,
             tools=self.tools,
             state_schema=self.state_schema,
             checkpointer=self.checkpointer,
@@ -459,6 +484,21 @@ class Agent:
 
         # Run auto-compaction in background
         self.auto_compact_context()
+
+        # --- Text formatting ---
+        console = Console()
+        tree_grep = Tree("[#7CFCA7]-> ● Search[/]")
+        tree_list = Tree("[#7CFCA7]-> ● List[/]")
+        tree_read = Tree("[#7CFCA7]-> ● Read[/]")
+        tree_write = Tree("[#7CFCA7]-> ● Write[/]")
+        tree_code_block = Tree("[#7CFCA7]-> ● Code[/]")
+
+        self._ui_renders["console"] = console
+        self._ui_renders["tree_list"] = tree_list
+        self._ui_renders["tree_grep"] = tree_grep
+        self._ui_renders["tree_read"] = tree_read
+        self._ui_renders["tree_write"] = tree_write
+        self._ui_renders["tree_code_block"] = tree_code_block
 
         return self._compiled_graph
 
@@ -469,183 +509,199 @@ class Agent:
             input=input, config=self._config, stream_mode=self.stream_mode
         )
 
+    def invoke(
+        self,
+        renderable_splits,
+        human_input,
+    ):
+        agent = self
 
-def initiate_agent(session_uuid=None, model_provider="anthropic"):
-    # --- Text formatting ---
-    console = Console()
-    tree_grep = Tree("[#7CFCA7]-> ● Search[/]")
-    tree_list = Tree("[#7CFCA7]-> ● List[/]")
-    tree_read = Tree("[#7CFCA7]-> ● Read[/]")
+        # TODO: Add Trees for edit file and glob tools
+        console = self._ui_renders["console"]
+        tree_list = self._ui_renders["tree_list"]
+        tree_grep = self._ui_renders["tree_grep"]
+        tree_read = self._ui_renders["tree_read"]
+        tree_write = self._ui_renders["tree_write"]
+        tree_code_block = self._ui_renders["tree_code_block"]
 
-    # --- Initialise LLM client ---
-    llm_client = LLMInterface(llm_provider=model_provider)
+        messages = [HumanMessage(content=human_input)]
 
-    # --- Read GREPO.md for system prompt and instructions ---
-    user_prompt_guidelines = Path(f"{os.getcwd()}/AGENTS.md").read_text(
-        encoding="utf-8"
-    )
+        # --- while loop ensures we have ended one complete cycle of agent inovcation ---
+        input_type = {"messages": messages}
+        agent_cycle_active = True
 
-    system_prompt = llm_client.get_system_prompt(user_prompt=user_prompt_guidelines)
+        while agent_cycle_active:
+            renderable_splits.update_spinner(spin_it=True)
 
-    if not session_uuid:
-        session_uuid = generate_session_uuid(console)
+            running_agent = agent.stream(
+                input=input_type,
+            )
 
-    agent_config = {
-        "configurable": {"thread_id": session_uuid},
-        "recursion_limit": 50,
-        "callbacks": [langfuse_handler],
-    }
+            for stream_message in running_agent:
+                # print(stream_message)
+                # print("^^^^^^^^^^")
+                print()
+                # Stream chunk type 1: Agent response
+                if stream_message.get("agent"):
+                    ai_messages = stream_message["agent"]["messages"][0].content
 
+                    if isinstance(ai_messages, list):
+                        for msg in ai_messages:
+                            if msg.get("thinking"):
+                                self._output_queue.append(
+                                    (
+                                        f"[dim]Thinking -> {msg['thinking']}[/]\n",
+                                        console,
+                                    )
+                                )
+
+                            elif msg.get("text"):
+                                self._output_queue.append(
+                                    (f"[#CFCFCF]{msg['text']}[/]", console)
+                                )
+                    else:
+                        markdown_text = Markdown(ai_messages)
+                        self._output_queue.append((markdown_text, console))
+
+                # Stream chunk type 2: Tool response
+                elif stream_message.get("tools"):
+                    # Check type of tool and populate tree alerts accordingly
+                    tool_name = stream_message["tools"]["messages"][0].name
+                    tool_message = stream_message["tools"]["messages"][0].content
+
+                    # Tool: List files
+                    if tool_name == "list_files" or "Error:" in tool_message:
+                        tree_list.add("[#FA5CB3]Analysing files and directories...[/]")
+                        self._output_queue.append((tree_list, console))
+                        # console.print(tree_list)
+
+                    # Tool: Read file
+                    elif tool_name == "read_file":
+                        if tool_message is None:
+                            continue
+
+                        if "Error:" in tool_message:
+                            tree_read.add(f"[#F76363]({tool_message})[/]")
+                            self._output_queue.append((tree_read, console))
+                            continue
+
+                        read_file_data = json.loads(tool_message)
+                        code_snippet, file_path = construct_code(
+                            read_file_data, truncate=True
+                        )
+
+                        tree_read.add(f"[#FA5CB3]Reading ({file_path})[/]")
+                        self._output_queue.append((tree_read, console))
+
+                    # Tool: Grep
+                    elif tool_name == "grep":
+                        if not tool_message:
+                            continue
+
+                        if "Error:" in tool_message:
+                            tree_read.add(f"[#F76363]({tool_message})[/]")
+                            self._output_queue.append((tree_read, console))
+                            continue
+
+                        grep_content_list = json.loads(tool_message)
+                        formatted_grep_results = format_grep_results(grep_content_list)
+
+                        sub_tree_grep = Tree(
+                            f"[#FA5CB3]Matches found ({len(formatted_grep_results)})[/]"
+                        )
+                        tree_grep.add(sub_tree_grep)
+                        for res in formatted_grep_results:
+                            sub_tree_grep.add(f"{res[0]}{res[1]}")
+
+                        self._output_queue.append((tree_grep, console))
+
+                    # Tool: Get Code Definition
+                    elif tool_name == "get_code_block":
+                        if "Error:" in tool_message:
+                            continue
+
+                        self._output_queue.append((tree_code_block, console))
+                        self._output_queue.append(
+                            (
+                                Syntax(
+                                    tool_message,
+                                    "python",
+                                    theme="monokai",
+                                ),
+                                console,
+                            )
+                        )
+
+                    # Tool: Write
+                    elif tool_name == "write":
+                        if "Error:" in tool_message:
+                            continue
+                        # TODO: --- Complete the logic ---
+
+                # Stream chunk type 3: Interrupt response
+                elif stream_message.get("__interrupt__"):
+                    old_code = stream_message["__interrupt__"][0].value["old_code"]
+                    new_code = stream_message["__interrupt__"][0].value["new_code"]
+                    self._output_queue.append((old_code, console))
+                    # console.print(old_code, highlight=False)
+
+                    self._output_queue.append(
+                        ("[#CFCFCF]----------Code Diff------------[/]", console)
+                    )
+
+                    self._output_queue.append((new_code, console))
+                    # console.print(new_code, highlight=False)
+
+                    human_approval = console.input("Enter Yes/No to accept/reject:")
+
+                    input_type = Command(resume={"option": human_approval})
+
+                # Condition to check if agent loop has ended or continues with the current cycle
+                # graph_state_values = agent._compiled_graph.get_state(
+                #     self._config
+                # ).values
+                last_ai_response = -1
+                for index, msg in enumerate(agent.get_messages()):
+                    if isinstance(msg, AIMessage):
+                        last_ai_response = max(last_ai_response, index)
+
+                if last_ai_response > 0:
+                    llm_response_metadata = agent.get_messages()[
+                        last_ai_response
+                    ].response_metadata
+
+                    stop_reason = llm_response_metadata["stop_reason"]
+
+                    # Officially marks the end of Agent loop
+                    if stop_reason == "end_turn":
+                        agent_cycle_active = False
+                        break
+
+        renderable_splits.update_spinner(spin_it=False)
+        renderable_splits.renderable_data = agent.session_cost(self.llm_client)
+
+
+def initiate_agent(
+    root_dir: str,
+    session_uuid: str,
+    output_queue: deque,
+    model_provider: str,
+    model: str,
+):
     # --- Create an Agent ---
     agent = Agent(
-        model=llm_client.client(),
+        root_dir=root_dir,
+        model=model,
+        provider=model_provider,
         tools=[list_files, read_file, grep, edit_file, get_code_block, glob, write],
         schema=GlobalState,
         checkpointer=get_checkpointer(),
-        system_prompt=system_prompt,
-        config=agent_config,
         stream_mode="updates",
         auto_compact=True,
+        output_queue=output_queue,
+        session_uuid=session_uuid,
     )
 
     agent._create()
 
-    ui_renders = {
-        "console": console,
-        "tree_grep": tree_grep,
-        "tree_list": tree_list,
-        "tree_read": tree_read,
-    }
-    agent_dict = {"agent": agent, "agent_config": agent_config}
-    return session_uuid, agent_dict, llm_client, ui_renders
-
-
-def invoke_agent(
-    renderable_splits,
-    session_uuid,
-    agent_dict,
-    llm_client,
-    ui_renders,
-    human_input,
-    output_queue,
-):
-    agent = agent_dict["agent"]
-    agent_config = agent_dict["agent_config"]
-
-    console = ui_renders["console"]
-    tree_list = ui_renders["tree_list"]
-    tree_grep = ui_renders["tree_grep"]
-    tree_read = ui_renders["tree_read"]
-
-    messages = [HumanMessage(content=human_input)]
-
-    # --- while loop ensures we have ended one complete cycle of agent inovcation ---
-    input_type = {"messages": messages}
-    agent_cycle_active = True
-
-    while agent_cycle_active:
-        renderable_splits.update_spinner(spin_it=True)
-
-        running_agent = agent.stream(
-            input=input_type,
-        )
-
-        for stream_message in running_agent:
-            # Stream chunk type 1: Agent response
-            if stream_message.get("agent"):
-                ai_messages = stream_message["agent"]["messages"][0].content
-
-                if isinstance(ai_messages, list):
-                    for msg in ai_messages:
-                        if msg.get("thinking"):
-                            output_queue.append(
-                                (f"[#60FCF5]Thinking: {msg['thinking']}[/]\n", console)
-                            )
-
-                        elif msg.get("text"):
-                            output_queue.append((f"[#CFCFCF]{msg['text']}[/]", console))
-                else:
-                    markdown_text = Markdown(ai_messages)
-                    output_queue.append((markdown_text, console))
-
-            # Stream chunk type 2: Tool response
-            elif stream_message.get("tools"):
-                # Check type of tool and populate tree alerts accordingly
-                tool_name = stream_message["tools"]["messages"][0].name
-                tool_message = stream_message["tools"]["messages"][0].content
-
-                # List files
-                if tool_name == "list_files" or "Error:" in tool_message:
-                    tree_list.add("[#FA5CB3]Analysing files and directories...[/]")
-                    output_queue.append((tree_list, console))
-                    # console.print(tree_list)
-
-                # Read file
-                elif tool_name == "read_file":
-                    if tool_message is None or "Error:" in tool_message:
-                        continue
-
-                    read_file_data = json.loads(tool_message)
-                    code_snippet, file_path = construct_code(
-                        read_file_data, truncate=True
-                    )
-
-                    tree_read.add(f"[#FA5CB3]Reading ({file_path})[/]")
-                    output_queue.append((tree_read, console))
-
-                # Grep file(s)
-                elif tool_name == "grep":
-                    if not tool_message or "Error:" in tool_message:
-                        continue
-
-                    grep_content_list = json.loads(tool_message)
-                    formatted_grep_results = format_grep_results(grep_content_list)
-
-                    sub_tree_grep = Tree(
-                        f"[#FA5CB3]Matches found ({len(formatted_grep_results)})[/]"
-                    )
-                    tree_grep.add(sub_tree_grep)
-                    for res in formatted_grep_results:
-                        sub_tree_grep.add(f"{res[0]}{res[1]}")
-
-                    output_queue.append((tree_grep, console))
-
-            # Stream chunk type 3: Interrupt response
-            elif stream_message.get("__interrupt__"):
-                old_code = stream_message["__interrupt__"][0].value["old_code"]
-                new_code = stream_message["__interrupt__"][0].value["new_code"]
-                output_queue.append((old_code, console))
-                # console.print(old_code, highlight=False)
-
-                output_queue.append(
-                    ("[#CFCFCF]----------Code Diff------------[/]", console)
-                )
-
-                output_queue.append((new_code, console))
-                # console.print(new_code, highlight=False)
-
-                human_approval = console.input("Enter Yes/No to accept/reject:")
-
-                input_type = Command(resume={"option": human_approval})
-
-            # Condition to check if agent loop has ended or continues with the current cycle
-            graph_state_values = agent._compiled_graph.get_state(agent_config).values
-            last_ai_response = -1
-            for index, msg in enumerate(graph_state_values["messages"]):
-                if isinstance(msg, AIMessage):
-                    last_ai_response = max(last_ai_response, index)
-
-            if last_ai_response > 0:
-                llm_response_metadata = graph_state_values["messages"][
-                    last_ai_response
-                ].response_metadata
-
-                stop_reason = llm_response_metadata["stop_reason"]
-
-                # Officially marks the end of Agent loop
-                if stop_reason == "end_turn":
-                    agent_cycle_active = False
-                    break
-
-    renderable_splits.update_spinner(spin_it=False)
-    renderable_splits.renderable_data = agent.session_cost(llm_client)
+    return agent

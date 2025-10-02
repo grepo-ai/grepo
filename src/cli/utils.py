@@ -8,4 +8,5 @@ color_palette = {
     "purple": "#4A4EFF",
     "orange": "#FF804A",
     "grepo_logo": "#8FF4FF",
+    "golden": "#EBD5AB",
 }

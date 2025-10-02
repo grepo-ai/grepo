@@ -213,16 +213,16 @@ if __name__ == "__main__":
                         input_type = Command(resume={"option": human_approval})
 
                     # Condition to check if agent loop has ended or continues with the current cycle
-                    graph_state_values = agent._compiled_graph.get_state(
-                        agent_config
-                    ).values
+                    # graph_state_values = agent._compiled_graph.get_state(
+                    #     agent_config
+                    # ).values
                     last_ai_response = -1
-                    for index, msg in enumerate(graph_state_values["messages"]):
+                    for index, msg in enumerate(agent.get_messages()):
                         if isinstance(msg, AIMessage):
                             last_ai_response = max(last_ai_response, index)
 
                     if last_ai_response > 0:
-                        llm_response_metadata = graph_state_values["messages"][
+                        llm_response_metadata = agent.get_messages()[
                             last_ai_response
                         ].response_metadata
 

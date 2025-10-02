@@ -1,10 +1,11 @@
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import pyfiglet
 import random
+from typing import Any
 
 
-from rich.console import Group
+from rich.console import Console, ConsoleOptions, Group
 from rich.text import Text
 from rich.panel import Panel
 from rich.box import Box
@@ -56,11 +57,25 @@ def input_render_styles(buffer=None, is_first_time=True, render_alert=None):
     return renderable_text, border_style
 
 
-# TODO: Complete the logic for rendering logs in a stateful manner and dynamically increase the Panel
-# height as logs are rendered on screen
 @dataclass
 class AgentLogs:
-    pass
+    messages: list[Any] = field(default_factory=list)
+    rendered_all_once: bool = False
+
+    def add(self, message):
+        self.messages.append(message)
+        # self.rendered_all_once = False
+        # if len(self.messages) >= 5:
+        #     self.messages = self.messages[3:]
+
+    def clear(self):
+        self.messages.clear()
+
+    def __rich_console__(self, console: Console, options: ConsoleOptions):
+        # if not self.rendered_all_once:
+        for message in self.messages:
+            yield message
+            # self.rendered_all_once = True
 
 
 class RenderSplits:
@@ -71,10 +86,13 @@ class RenderSplits:
         self.output_queue = output_queue
         self._log_history = ""
         self._renderable_data = {}
+        self.console = Console()
+        self._agent_logs = AgentLogs()
+
         self._upper_split_panel = Panel(
-            "[#F47AFF]How can i help you today?[/]",
+            self._agent_logs,
             box=SIMPLE,
-            height=20,
+            # height=30,
         )
         self._lower_split_panel = Panel(
             '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]',
@@ -164,10 +182,13 @@ class RenderSplits:
                     render_data += f"{token_usage_keys.get(key)}: {value}\n"
 
             if render_data:
-                self._footer_split_panel.renderable = f"[#F47AFF]{render_data}[/]"
+                self._footer_split_panel.renderable = (
+                    f"[#F47AFF][dim]{render_data}[/][/]"
+                )
                 self._footer_split_panel.box = ROUNDED
                 self._footer_split_panel.title = "Session Stats"
                 self._footer_split_panel.border_style = "#8FF4FF"
+                self._footer_split_panel.style = "dim"
                 self._footer_split_panel.height = 7
 
         elif blank:

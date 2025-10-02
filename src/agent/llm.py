@@ -11,12 +11,12 @@ class LLMInterface:
         thinking_mode: bool = True,
         max_tokens: int = 64000,
     ):
+        self.model = model
         self.llm_provider = llm_provider
         self.max_tokens = max_tokens
         self.thinking_mode = (
             {"type": "enabled", "budget_tokens": 2000} if thinking_mode else None
         )
-        self.model = model
         self._cost_per_token = self._get_cost_per_token()
         self._context_window_size = self._get_context_window_size()
         self._system_prompt = None

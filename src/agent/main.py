@@ -538,10 +538,8 @@ class Agent:
             )
 
             for stream_message in running_agent:
-                # print(stream_message)
-                # print("^^^^^^^^^^")
-                print()
                 # Stream chunk type 1: Agent response
+                console.print()
                 if stream_message.get("agent"):
                     ai_messages = stream_message["agent"]["messages"][0].content
 
@@ -621,16 +619,15 @@ class Agent:
                             continue
 
                         self._output_queue.append((tree_code_block, console))
-                        self._output_queue.append(
-                            (
-                                Syntax(
-                                    tool_message,
-                                    "python",
-                                    theme="monokai",
-                                ),
-                                console,
+                        tree_code_block.add(
+                            Syntax(
+                                tool_message,
+                                "python",
+                                theme="monokai",
+                                background_color="default",
                             )
                         )
+                        self._output_queue.append((tree_code_block, console))
 
                     # Tool: Write
                     elif tool_name == "write":

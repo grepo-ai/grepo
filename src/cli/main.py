@@ -14,7 +14,7 @@ from src.cli.renderables import render_intro, RenderSplits
 
 
 # Intial screen setup and constants
-console = Console()
+console = Console(highlight=False)
 
 
 if __name__ == "__main__":
@@ -26,7 +26,6 @@ if __name__ == "__main__":
 
     # Chat session uuid
     session_uuid = generate_session_uuid()
-    console.print(f"[#7CFCA7]-> session id: {session_uuid}[/]")
 
     # Thread initials
     lock = threading.Lock()

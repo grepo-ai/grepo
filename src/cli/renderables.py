@@ -21,7 +21,7 @@ def render_intro(console):
     console.print(text)
 
     panel = Panel(
-        f"[#FAFAFA]   * Welcome to [#80FFFD]Grepo[/] * [/] \n\n [#F5BE3D]  cwd: {os.getcwd()}[/] \n\n  [#F5BE3D] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
+        f"[#FAFAFA]   * Welcome to [#80FFFD]Grepo[/] * [/] \n\n [#FC69FF]  cwd: {os.getcwd()}[/] \n\n  [#FC69FF] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
         box=ROUNDED,
         border_style="#80FFFD",
         expand=False,
@@ -61,21 +61,56 @@ def input_render_styles(buffer=None, is_first_time=True, render_alert=None):
 class AgentLogs:
     messages: list[Any] = field(default_factory=list)
     rendered_all_once: bool = False
+    max_visible_lines: int = 10  # Maximum lines to show in upper panel
+    _version: int = 0  # Internal version counter to trigger re-renders
 
     def add(self, message):
         self.messages.append(message)
-        # self.rendered_all_once = False
-        # if len(self.messages) >= 5:
-        #     self.messages = self.messages[3:]
+        self._version += 1  # Increment to trigger Live refresh
 
     def clear(self):
         self.messages.clear()
+        self._version += 1
+
+    def _count_message_lines(
+        self, message, console: Console, options: ConsoleOptions
+    ) -> int:
+        """Count how many lines a message will take when rendered"""
+        # For simple strings, count newlines
+        if isinstance(message, str):
+            return message.count("\n") + 1
+        # For Text objects
+        elif hasattr(message, "plain"):
+            return message.plain.count("\n") + 1
+        # For complex renderables, estimate conservatively
+        else:
+            return 3
 
     def __rich_console__(self, console: Console, options: ConsoleOptions):
-        # if not self.rendered_all_once:
-        for message in self.messages:
+        """Render messages with smart pagination to fit within max_visible_lines"""
+        if not self.messages:
+            return
+
+        # Start from the most recent messages and work backwards
+        total_lines = 0
+        messages_to_render = []
+
+        for message in reversed(self.messages):
+            message_lines = self._count_message_lines(message, console, options)
+
+            # Check if adding this message would exceed our limit
+            if total_lines + message_lines > self.max_visible_lines:
+                # If we haven't added any messages yet, show at least this one (truncated)
+                if not messages_to_render:
+                    messages_to_render.append(message)
+                break
+
+            messages_to_render.insert(0, message)
+            total_lines += message_lines
+
+        # Yield the selected messages
+        for message in messages_to_render:
             yield message
-            # self.rendered_all_once = True
 
 
 class RenderSplits:
@@ -92,14 +127,16 @@ class RenderSplits:
         self._upper_split_panel = Panel(
             self._agent_logs,
             box=SIMPLE,
-            # height=30,
+            height=20,
         )
+
         self._lower_split_panel = Panel(
             '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]',
             box=ROUNDED,
             border_style="#545454",
             height=3,
         )
+
         self.spinner = Panel(
             "[#969696]* Tip: Add .greporules for custom instructions for Grepo to remember[/]",
             box=SIMPLE,
@@ -143,7 +180,7 @@ class RenderSplits:
 
         if spin_it:
             self.spinner.renderable = Spinner(
-                "star", text=f"[#FFB82B]{status_text}[/]", style="#FFB82B"
+                "star", text=f"[#FF70F8]{status_text}[/]", style="#FF70F8"
             )
         else:
             self.spinner.renderable = (

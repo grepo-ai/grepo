@@ -31,7 +31,7 @@ def bg_query_processing(
 
             if query is not None:
                 renderable_splits._agent_logs.add(
-                    Text(f"\n{query}\n", style="#CCCCCC on #333333")
+                    Text(f"\n{query}\n", style="on #333333")
                 )
 
                 agent.invoke(
@@ -46,13 +46,20 @@ def bg_query_processing(
 def bg_query_logs_processing(
     renderable_splits, console, output_queue=None, lock=None, stop_event=None
 ):
+    import time
+
     while not stop_event.is_set():
         buffered_messages = renderable_splits._agent_logs
-        while output_queue:
-            message, console = output_queue.popleft()
-            if message:
-                buffered_messages.add(message)
 
-        # print(buffered_messages)
-        # if buffered_messages.messages:
-        #     renderable_splits.update_upper_split(renderable_data=buffered_messages)
+        try:
+            # Process all available messages from the deque
+            while len(output_queue) > 0:
+                message, msg_console = output_queue.popleft()
+                if message:
+                    buffered_messages.add(message)
+        except IndexError:
+            # Deque is empty, continue
+            pass
+
+        # Small sleep to prevent busy waiting
+        time.sleep(0.1)

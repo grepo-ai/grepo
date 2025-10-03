@@ -213,9 +213,6 @@ if __name__ == "__main__":
                         input_type = Command(resume={"option": human_approval})
 
                     # Condition to check if agent loop has ended or continues with the current cycle
-                    # graph_state_values = agent._compiled_graph.get_state(
-                    #     agent_config
-                    # ).values
                     last_ai_response = -1
                     for index, msg in enumerate(agent.get_messages()):
                         if isinstance(msg, AIMessage):

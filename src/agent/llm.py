@@ -7,7 +7,7 @@ class LLMInterface:
     def __init__(
         self,
         llm_provider="anthropic",
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-5-20250929",
         thinking_mode: bool = True,
         max_tokens: int = 64000,
     ):
@@ -31,12 +31,12 @@ class LLMInterface:
 
     def _get_context_window_size(self):
         if self.llm_provider == "anthropic":
-            if self.model == "claude-sonnet-4-20250514":
+            if self.model == "claude-sonnet-4-5-20250929":
                 return 200000
 
     def _get_cost_per_token(self):
         if self.llm_provider == "anthropic":
-            if self.model == "claude-sonnet-4-20250514":
+            if self.model == "claude-sonnet-4-5-20250929":
                 return {
                     "input_token_cost": 3 / 1000000,
                     "output_token_cost": 15 / 1000000,

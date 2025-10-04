@@ -11,10 +11,11 @@ from src.cli.commands import Commands
 from src.cli.terminal import GetchRaw, read_keystroke
 from src.cli.processing import bg_query_processing, bg_query_logs_processing
 from src.cli.renderables import render_intro, RenderSplits
+from src.cli.utils import grepo_md_theme
 
 
-# Intial screen setup and constants
-console = Console(highlight=False)
+# --- Intial screen setup ---
+console = Console(highlight=False, theme=grepo_md_theme)
 
 
 if __name__ == "__main__":

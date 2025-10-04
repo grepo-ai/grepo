@@ -1,4 +1,3 @@
-import os
 import json
 import time
 import threading
@@ -28,6 +27,8 @@ from rich.console import Console
 from rich.tree import Tree
 from rich.syntax import Syntax
 from rich.markdown import Markdown
+from rich.text import Text
+from rich.style import Style
 
 
 # ---- Langfuse ---
@@ -48,6 +49,7 @@ from agent.utils import (
     construct_code,
     format_grep_results,
 )
+from src.cli.utils import code_block_md_theme, color_palette
 
 
 class Agent:
@@ -539,7 +541,6 @@ class Agent:
 
             for stream_message in running_agent:
                 # Stream chunk type 1: Agent response
-                console.print()
                 if stream_message.get("agent"):
                     ai_messages = stream_message["agent"]["messages"][0].content
 
@@ -558,7 +559,9 @@ class Agent:
                                     (f"[#CFCFCF]{msg['text']}[/]", console)
                                 )
                     else:
-                        markdown_text = Markdown(ai_messages)
+                        markdown_text = Markdown(
+                            ai_messages, code_theme=code_block_md_theme
+                        )
                         self._output_queue.append((markdown_text, console))
 
                 # Stream chunk type 2: Tool response
@@ -571,7 +574,6 @@ class Agent:
                     if tool_name == "list_files" or "Error:" in tool_message:
                         tree_list.add("[#FA5CB3]Analysing files and directories...[/]")
                         self._output_queue.append((tree_list, console))
-                        # console.print(tree_list)
 
                     # Tool: Read file
                     elif tool_name == "read_file":
@@ -609,7 +611,17 @@ class Agent:
                         )
                         tree_grep.add(sub_tree_grep)
                         for res in formatted_grep_results:
-                            sub_tree_grep.add(f"{res[0]}{res[1]}")
+                            file_link = f"vscode://file/{res[0]}{res[1]}"
+                            sub_tree_grep.add(
+                                Text(
+                                    f"{res[0]}{res[1]}",
+                                    style=Style(
+                                        link=file_link,
+                                        underline=False,
+                                        color=color_palette["light-purple"],
+                                    ),
+                                )
+                            )
 
                         self._output_queue.append((tree_grep, console))
 
@@ -623,7 +635,7 @@ class Agent:
                             Syntax(
                                 tool_message,
                                 "python",
-                                theme="monokai",
+                                theme=code_block_md_theme,
                                 background_color="default",
                             )
                         )
@@ -640,39 +652,56 @@ class Agent:
                     old_code = stream_message["__interrupt__"][0].value["old_code"]
                     new_code = stream_message["__interrupt__"][0].value["new_code"]
                     self._output_queue.append((old_code, console))
-                    # console.print(old_code, highlight=False)
 
                     self._output_queue.append(
                         ("[#CFCFCF]----------Code Diff------------[/]", console)
                     )
 
                     self._output_queue.append((new_code, console))
-                    # console.print(new_code, highlight=False)
 
                     human_approval = console.input("Enter Yes/No to accept/reject:")
 
                     input_type = Command(resume={"option": human_approval})
 
-                # Condition to check if agent loop has ended or continues with the current cycle
-                # graph_state_values = agent._compiled_graph.get_state(
-                #     self._config
-                # ).values
-                last_ai_response = -1
-                for index, msg in enumerate(agent.get_messages()):
-                    if isinstance(msg, AIMessage):
-                        last_ai_response = max(last_ai_response, index)
+            # After the stream completes, check if we should continue the agent loop
+            # The stream exhaustion means one complete react cycle has finished
+            all_messages = agent.get_messages()
 
-                if last_ai_response > 0:
-                    llm_response_metadata = agent.get_messages()[
-                        last_ai_response
-                    ].response_metadata
+            if not all_messages:
+                # No messages at all - should not happen, terminate
+                agent_cycle_active = False
+                continue
 
-                    stop_reason = llm_response_metadata["stop_reason"]
+            # Find the last AI message
+            last_ai_message = None
+            for msg in reversed(all_messages):
+                if isinstance(msg, AIMessage):
+                    last_ai_message = msg
+                    break
 
-                    # Officially marks the end of Agent loop
-                    if stop_reason == "end_turn":
-                        agent_cycle_active = False
-                        break
+            if last_ai_message is None:
+                # No AI message found - terminate to be safe
+                agent_cycle_active = False
+                continue
+
+            # Check stop reason and tool calls
+            stop_reason = last_ai_message.response_metadata.get("stop_reason", None)
+            has_tool_calls = (
+                hasattr(last_ai_message, "tool_calls")
+                and last_ai_message.tool_calls
+                and len(last_ai_message.tool_calls) > 0
+            )
+
+            # The agent loop should continue only if:
+            # - stop_reason is NOT "end_turn", OR
+            # - There are pending tool calls that haven't been executed
+            # Since we use stream mode "updates", tool calls are auto-executed by the graph
+            # So if stream ended and we have end_turn with no tool_calls, we're done
+            if stop_reason == "end_turn" and not has_tool_calls:
+                agent_cycle_active = False
+            else:
+                # Continue the loop - there might be more work to do
+                agent_cycle_active = True
 
         renderable_splits.update_spinner(spin_it=False)
         renderable_splits.renderable_data = agent.session_cost(self.llm_client)

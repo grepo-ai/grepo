@@ -61,7 +61,6 @@ def input_render_styles(buffer=None, is_first_time=True, render_alert=None):
 class AgentLogs:
     messages: list[Any] = field(default_factory=list)
     rendered_all_once: bool = False
-    max_visible_lines: int = 10  # Maximum lines to show in upper panel
     _version: int = 0  # Internal version counter to trigger re-renders
 
     def add(self, message):
@@ -72,44 +71,13 @@ class AgentLogs:
         self.messages.clear()
         self._version += 1
 
-    def _count_message_lines(
-        self, message, console: Console, options: ConsoleOptions
-    ) -> int:
-        """Count how many lines a message will take when rendered"""
-        # For simple strings, count newlines
-        if isinstance(message, str):
-            return message.count("\n") + 1
-        # For Text objects
-        elif hasattr(message, "plain"):
-            return message.plain.count("\n") + 1
-        # For complex renderables, estimate conservatively
-        else:
-            return 3
-
     def __rich_console__(self, console: Console, options: ConsoleOptions):
-        """Render messages with smart pagination to fit within max_visible_lines"""
+        """Render all messages without pagination - let panel grow dynamically"""
         if not self.messages:
             return
 
-        # Start from the most recent messages and work backwards
-        total_lines = 0
-        messages_to_render = []
-
-        for message in reversed(self.messages):
-            message_lines = self._count_message_lines(message, console, options)
-
-            # Check if adding this message would exceed our limit
-            if total_lines + message_lines > self.max_visible_lines:
-                # If we haven't added any messages yet, show at least this one (truncated)
-                if not messages_to_render:
-                    messages_to_render.append(message)
-                break
-
-            messages_to_render.insert(0, message)
-            total_lines += message_lines
-
-        # Yield the selected messages
-        for message in messages_to_render:
+        # Yield all messages in order
+        for message in self.messages:
             yield message
 
 
@@ -127,7 +95,6 @@ class RenderSplits:
         self._upper_split_panel = Panel(
             self._agent_logs,
             box=SIMPLE,
-            height=20,
         )
 
         self._lower_split_panel = Panel(
@@ -138,7 +105,7 @@ class RenderSplits:
         )
 
         self.spinner = Panel(
-            "[#969696]* Tip: Add .greporules for custom instructions for Grepo to remember[/]",
+            "[#969696]* Tip: Add AGENTS.md file in root dir of your project with your custom instructions, style guide, project architecture details.[/]",
             box=SIMPLE,
             height=0,
         )
@@ -204,12 +171,13 @@ class RenderSplits:
 
         elif exit_screen:
             render_data = ""
+
             token_usage_keys = {
-                "total_input_tokens": "Total Input Tokens",
-                "total_output_tokens": "Total Output Tokens",
-                "cache_creation_input_tokens": "Cache Write Tokens",
-                "cache_read_input_tokens": "Cache Read Tokens",
-                "session_cost": "Total Cost ($)",
+                "total_input_tokens": "Total input tokens",
+                "total_output_tokens": "Total output tokens",
+                "cache_creation_input_tokens": "Cache write",
+                "cache_read_input_tokens": "Cache read",
+                "session_cost": "Total cost ($)",
             }
 
             if self.renderable_data:
@@ -220,11 +188,9 @@ class RenderSplits:
 
             if render_data:
                 self._footer_split_panel.renderable = (
-                    f"[#F47AFF][dim]{render_data}[/][/]"
+                    f"[#9CAAF0][dim]{render_data}[/][/]"
                 )
-                self._footer_split_panel.box = ROUNDED
-                self._footer_split_panel.title = "Session Stats"
-                self._footer_split_panel.border_style = "#8FF4FF"
+                self._footer_split_panel.box = SIMPLE
                 self._footer_split_panel.style = "dim"
                 self._footer_split_panel.height = 7
 

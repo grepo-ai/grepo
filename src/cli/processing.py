@@ -9,7 +9,7 @@ def bg_query_processing(
     console,
     renderable_splits,
     session_uuid,
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-4-5-20250929",
     model_provider="anthropic",
     query_queue=None,
     output_queue=None,
@@ -58,8 +58,6 @@ def bg_query_logs_processing(
                 if message:
                     buffered_messages.add(message)
         except IndexError:
-            # Deque is empty, continue
             pass
 
-        # Small sleep to prevent busy waiting
         time.sleep(0.1)

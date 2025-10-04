@@ -1,6 +1,7 @@
 import queue
 from src.agent.main import initiate_agent
 from rich.text import Text
+from rich.padding import Padding
 
 
 def bg_query_processing(
@@ -30,10 +31,7 @@ def bg_query_processing(
             query = query_queue.get(timeout=1)
 
             if query is not None:
-                renderable_splits._agent_logs.add(
-                    Text(f"\n{query}\n", style="on #333333")
-                )
-
+                output_queue.append((Text(f"\n{query}\n", style="on #333333"), console))
                 agent.invoke(
                     renderable_splits,
                     query.strip(">"),
@@ -49,14 +47,21 @@ def bg_query_logs_processing(
     import time
 
     while not stop_event.is_set():
-        buffered_messages = renderable_splits._agent_logs
-
         try:
             # Process all available messages from the deque
             while len(output_queue) > 0:
                 message, msg_console = output_queue.popleft()
                 if message:
-                    buffered_messages.add(message)
+                    # Print logs directly to console above the Live region
+                    # (This approach works instead of rendering logs inside a separate container/layout which
+                    # introduces extreme complexities of auto-scrolling, making sure the right logs are rendered
+                    # in active terminal view, also its IMPORTANT to know `console` being used here
+                    # is same that is passed to Live since the threads don't have access to live_region, we need to pass it or use the console
+                    # that's already passed (which is the same in this case), so we dont need to do live.console.print()[source: Rich docs])
+                    console.print(
+                        Padding(message, (0, 0, 0, 1))
+                    )  # (top, right, bottom, left)
+
         except IndexError:
             pass
 

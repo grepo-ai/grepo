@@ -489,11 +489,11 @@ class Agent:
 
         # --- Text formatting ---
         console = Console()
-        tree_grep = Tree("[#7CFCA7]-> ● Search[/]")
-        tree_list = Tree("[#7CFCA7]-> ● List[/]")
-        tree_read = Tree("[#7CFCA7]-> ● Read[/]")
-        tree_write = Tree("[#7CFCA7]-> ● Write[/]")
-        tree_code_block = Tree("[#7CFCA7]-> ● Code[/]")
+        tree_grep = Tree("[#7CFCA7]● Search[/]")
+        tree_list = Tree("[#7CFCA7]● List[/]")
+        tree_read = Tree("[#7CFCA7]● Read[/]")
+        tree_write = Tree("[#7CFCA7]● Write[/]")
+        tree_code_block = Tree("[#7CFCA7]● Code[/]")
 
         self._ui_renders["console"] = console
         self._ui_renders["tree_list"] = tree_list
@@ -555,9 +555,7 @@ class Agent:
                                 )
 
                             elif msg.get("text"):
-                                self._output_queue.append(
-                                    (f"[#CFCFCF]{msg['text']}[/]", console)
-                                )
+                                self._output_queue.append((f"{msg['text']}", console))
                     else:
                         markdown_text = Markdown(
                             ai_messages, code_theme=code_block_md_theme

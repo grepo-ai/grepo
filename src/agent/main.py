@@ -590,7 +590,15 @@ class Agent:
                             read_file_data, truncate=True
                         )
 
-                        tree_read.add(f"[#FA5CB3]Reading ({file_path})[/]")
+                        tree_read.add(
+                            Text(
+                                file_path,
+                                style=Style(
+                                    underline=False,
+                                    color=color_palette["light-purple"],
+                                ),
+                            )
+                        )
                         self._output_queue.append((tree_read, console))
 
                     # Tool: Grep

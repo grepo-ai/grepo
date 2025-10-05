@@ -9,9 +9,11 @@ from rich.console import Console, ConsoleOptions, Group, RenderResult
 from rich.text import Text
 from rich.panel import Panel
 from rich.box import Box
-from rich.box import ROUNDED, SIMPLE
+from rich.box import SIMPLE
 from rich.spinner import Spinner
+from rich.padding import Padding
 from src.cli.commands import Commands
+from src.cli.utils import color_palette
 
 
 # Custom box with no left/right borders (only top and bottom horizontal lines)
@@ -28,19 +30,18 @@ NO_SIDE_BORDER_BOX = Box(
 
 
 def render_intro(console):
-    console.print("\n")
+    console.print("\n\n")
     text = Text()
     text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#8FF4FF")
     console.print(text)
 
-    panel = Panel(
-        f"[#FAFAFA]   * Welcome to [#80FFFD]Grepo[/] * [/] \n\n [#FC69FF]  cwd: {os.getcwd()}[/] \n\n  [#FC69FF] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
-        box=ROUNDED,
-        border_style="#80FFFD",
-        expand=False,
-        padding=(0, 0, 0, 0),
+    console.print(f"[{color_palette.get('intro-text-pink')}] cwd: {os.getcwd()}[/]\n")
+    console.print(
+        f"[{color_palette.get('intro-text-pink')}][italic] /help for help[/italic],[italic] / for list of commands[/]"
     )
-    console.print(panel)
+    console.print(
+        Padding(Text("─" * 40, style=color_palette.get("cyan")), (0, 0, 0, 1))
+    )
 
 
 def input_render_styles(buffer=None, is_first_time=True, render_alert=None):

@@ -232,8 +232,9 @@ class Agent:
 
         return formatted_messages
 
-    def session_cost(self, llm_client: LLMInterface, compaction=False):
+    def session_cost(self, compaction=False):
         all_state_messages = self.get_messages()
+        llm_client = self.llm_client
 
         token_usage = {
             "total_input_tokens": 0,
@@ -242,6 +243,7 @@ class Agent:
             "cache_read_input_tokens": 0,
             "session_cost": 0.00,
             "context_window_used": 0.0,
+            "model_used": llm_client.get_model_name(llm_client.model),
         }
 
         token_usage["total_input_tokens"] = 0
@@ -286,8 +288,10 @@ class Agent:
 
         return token_usage
 
-    def calculate_cycle_cost(self, llm_client, all_messages=None):
+    def calculate_cycle_cost(self, all_messages=None, render=False):
         "This method calculates cost of 1 complete agent loop i.e from human message to AI's final response"
+
+        llm_client = self.llm_client
 
         if all_messages is None:
             all_messages = self.get_messages()
@@ -299,6 +303,7 @@ class Agent:
             "cache_read_input_tokens": 0,
             "cost": 0,
             "context_window_used": 0,
+            "model_used": llm_client.get_model_name(llm_client.model),
         }
 
         for index, message in enumerate(all_messages):
@@ -344,6 +349,28 @@ class Agent:
         )
 
         self._cycle_stats = cost_stats
+
+        # Format the final cost usage stats to renderable fortmat
+        if render:
+            usage_stats_keys = {
+                "total_input_tokens": "↑",
+                "total_output_tokens": "↓",
+                "cost": "",
+                "context_window_used": "context",
+            }
+
+            renderable_cost_stats = "\n"
+            for key, value in self._cycle_stats.items():
+                if key in [
+                    "cache_creation_input_tokens",
+                    "cache_read_input_tokens",
+                    "model_used",
+                ]:
+                    continue
+                renderable_cost_stats += f"{usage_stats_keys.get(key)} {value} "
+
+            return f"[dim]{Text(renderable_cost_stats, (0, 0, 0, 1))}[/]"
+
         return cost_stats
 
     def auto_compact_context(self):
@@ -709,8 +736,10 @@ class Agent:
                 # Continue the loop - there might be more work to do
                 agent_cycle_active = True
 
-        renderable_splits.update_spinner(spin_it=False)
-        renderable_splits.renderable_data = agent.session_cost(self.llm_client)
+        renderable_splits.update_spinner(
+            spin_it=False, data=agent.calculate_cycle_cost(render=True)
+        )
+        renderable_splits.renderable_data = agent.session_cost()
 
 
 def initiate_agent(

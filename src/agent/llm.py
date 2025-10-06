@@ -45,6 +45,10 @@ class LLMInterface:
                     "cache_write_cost_1h": 6 / 1000000,
                 }
 
+    def get_model_name(self, model_name):
+        model_mapping = {"claude-sonnet-4-5-20250929": "claude sonnet 4.5"}
+        return model_mapping[model_name]
+
     def client(self):
         # Anthropic LLM
         if self.llm_provider == "anthropic":

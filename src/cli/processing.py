@@ -31,7 +31,9 @@ def bg_query_processing(
             query = query_queue.get(timeout=1)
 
             if query is not None:
-                output_queue.append((Text(f"\n{query}\n", style="on #333333"), console))
+                output_queue.append(
+                    (Text(f"\n{query} \n", style="on #333333"), console)
+                )
                 agent.invoke(
                     renderable_splits,
                     query.strip(">"),

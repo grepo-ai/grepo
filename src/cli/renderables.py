@@ -161,7 +161,7 @@ class RenderSplits:
         # This is to prevent frequent updates when buffer didnt even change
         self._previous_buffer = buffer
 
-    def update_spinner(self, spin_it=True, status_text=None):
+    def update_spinner(self, spin_it=True, status_text=None, data: str = None):
         status_fillers = ["Jellying...", "Chewing GPUs...", "Poking intelligence..."]
 
         if not status_text:
@@ -171,6 +171,9 @@ class RenderSplits:
             self.spinner.renderable = Spinner(
                 "star", text=f"[#F27F4E]{status_text}[/]", style="#F27F4E"
             )
+
+        elif not spin_it and data is not None:
+            self.spinner.renderable = data
 
         else:
             self.spinner.renderable = (
@@ -201,6 +204,7 @@ class RenderSplits:
                 "cache_creation_input_tokens": "Cache write",
                 "cache_read_input_tokens": "Cache read",
                 "session_cost": "Total cost ($)",
+                "model_used": "Models used",
             }
 
             if self.renderable_data:

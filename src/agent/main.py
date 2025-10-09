@@ -356,7 +356,6 @@ class Agent:
                 "total_input_tokens": "↑",
                 "total_output_tokens": "↓",
                 "cost": "",
-                "context_window_used": "context",
             }
 
             renderable_cost_stats = "\n"
@@ -365,6 +364,7 @@ class Agent:
                     "cache_creation_input_tokens",
                     "cache_read_input_tokens",
                     "model_used",
+                    "context_window_used",
                 ]:
                     continue
                 renderable_cost_stats += f"{usage_stats_keys.get(key)} {value} "

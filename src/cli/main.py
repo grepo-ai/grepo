@@ -86,6 +86,10 @@ if __name__ == "__main__":
                         if not char:
                             continue
 
+                        if char == "\t":
+                            query_queue.put(char)
+                            continue
+
                         # Ignore arrow keys and TODO add other non-printable sequences
                         # that might not need processing
                         if len(char) > 1 or char.startswith("\x1b"):

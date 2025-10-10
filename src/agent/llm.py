@@ -8,18 +8,32 @@ class LLMInterface:
         self,
         llm_provider="anthropic",
         model="claude-sonnet-4-5-20250929",
-        thinking_mode: bool = True,
+        thinking_mode: bool = False,
         max_tokens: int = 64000,
     ):
         self.model = model
         self.llm_provider = llm_provider
         self.max_tokens = max_tokens
-        self.thinking_mode = (
+        self._thinking_mode = (
             {"type": "enabled", "budget_tokens": 2000} if thinking_mode else None
         )
         self._cost_per_token = self._get_cost_per_token()
         self._context_window_size = self._get_context_window_size()
         self._system_prompt = None
+        self._llm_client = None
+
+    @property
+    def thinking(self):
+        return self._llm_client.thinking
+
+    @thinking.setter
+    def thinking(self, flag: bool):
+        if flag:
+            setattr(
+                self._llm_client, "thinking", {"type": "enabled", "budget_tokens": 2000}
+            )
+        else:
+            setattr(self._llm_client, "thinking", None)
 
     @property
     def cost_per_token(self):
@@ -52,17 +66,16 @@ class LLMInterface:
     def client(self):
         # Anthropic LLM
         if self.llm_provider == "anthropic":
-            llm_client = ChatAnthropic(
+            self._llm_client = ChatAnthropic(
                 model=self.model,
                 max_tokens=self.max_tokens,
-                thinking=self.thinking_mode,
+                thinking=self._thinking_mode,
             )
 
-        return llm_client
+        return self._llm_client
 
     def get_system_prompt(self, user_prompt):
         self._system_prompt = inject_user_prompt(user_prompt)
-
         if self.llm_provider == "anthropic":
             system_prompt = SystemMessage(
                 content=[

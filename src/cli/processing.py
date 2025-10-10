@@ -1,7 +1,8 @@
+import time
 import queue
-from src.agent.main import initiate_agent
 from rich.text import Text
 from rich.padding import Padding
+from src.agent.main import initiate_agent
 
 
 def bg_query_processing(
@@ -31,13 +32,21 @@ def bg_query_processing(
             query = query_queue.get(timeout=1)
 
             if query is not None:
-                output_queue.append(
-                    (Text(f"\n{query} \n", style="on #333333"), console)
-                )
-                agent.invoke(
-                    renderable_splits,
-                    query.strip(">"),
-                )
+                # Thinking mode toggle command
+                if query == "\t":
+                    agent.thinking = not agent.thinking
+                    thinking_flag = True if agent.thinking else False
+                    renderable_splits.update_footer_split(thinking=thinking_flag)
+                    continue
+
+                else:
+                    output_queue.append(
+                        (Text(f"\n{query} \n", style="#FAFAFA on #333333"), console)
+                    )
+                    agent.invoke(
+                        renderable_splits,
+                        query.strip(">"),
+                    )
 
         except queue.Empty:
             continue
@@ -46,8 +55,6 @@ def bg_query_processing(
 def bg_query_logs_processing(
     renderable_splits, console, output_queue=None, lock=None, stop_event=None
 ):
-    import time
-
     while not stop_event.is_set():
         try:
             # Process all available messages from the deque

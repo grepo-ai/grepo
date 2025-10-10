@@ -106,6 +106,21 @@ class Agent:
         }
 
     @property
+    def thinking(self):
+        return self.model_interface.thinking
+
+    @thinking.setter
+    def thinking(self, flag: bool):
+        if flag:
+            setattr(
+                self.model_interface,
+                "thinking",
+                {"type": "enabled", "budget_tokens": 2000},
+            )
+        else:
+            setattr(self.model_interface, "thinking", None)
+
+    @property
     def agent_state(self):
         return self._compiled_graph.get_state(self._config)
 

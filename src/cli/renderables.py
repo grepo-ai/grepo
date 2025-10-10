@@ -130,12 +130,41 @@ class RenderSplits:
             padding=(0, 1, 0, 1),
         )
 
-        self._footer_split_panel = Panel(
-            "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]",
+        self._footer_split_panel = self._footer_panel()
+
+    def _footer_panel(self, partial_render=False, **kwargs):
+        if partial_render:
+            if kwargs.get("thinking", False):
+                left_text = "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
+                right_text = "[#B6CBFA]Thinking on (tab to toggle)[/]"
+            else:
+                left_text = "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
+                right_text = "[dim]Thinking off (tab to toggle)[/]"
+
+            footer_tbl = Table.grid(expand=True)
+            footer_tbl.add_column("", ratio=3)
+            footer_tbl.add_column("", ratio=1, justify="right", no_wrap=True)
+            footer_tbl.add_row(f"{left_text}", f"{right_text}")
+
+            return footer_tbl
+
+        else:
+            left_text = "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
+            right_text = "[dim]Thinking off (tab to toggle)[/]"
+
+        footer_tbl = Table.grid(expand=True)
+        footer_tbl.add_column("", ratio=3)
+        footer_tbl.add_column("", ratio=1, justify="right", no_wrap=True)
+
+        footer_tbl.add_row(f"{left_text}", f"{right_text}")
+
+        panel = Panel(
+            footer_tbl,
             box=SIMPLE,
             height=0,
             padding=(0, 1, 0, 1),
         )
+        return panel
 
     @property
     def renderable_data(self):
@@ -182,21 +211,22 @@ class RenderSplits:
             )
 
     def update_footer_split(self, blank=False, **kwargs):
-        dynamic_selection = kwargs.get("dynamic_selection", None)
-        list_all_commands = kwargs.get("list_all_commands", False)
-        exit_screen = kwargs.get("exit_screen", False)
-
-        if list_all_commands:
+        if kwargs.get("list_all_commands", False):
             self._footer_split_panel.renderable = Commands.main_commands_selector()
             self._footer_split_panel.height = 8
 
-        elif dynamic_selection is not None:
+        elif kwargs.get("dynamic_selection", None) is not None:
             self._footer_split_panel.renderable = Commands.main_commands_selector(
-                dynamic_selection
+                kwargs["dynamic_selection"]
             )
             self._footer_split_panel.height = 8
 
-        elif exit_screen:
+        elif kwargs.get("thinking", None) is not None:
+            self._footer_split_panel.renderable = self._footer_panel(
+                partial_render=True, thinking=kwargs["thinking"]
+            )
+
+        elif kwargs.get("exit_screen", False):
             stats_tbl = Table.grid(expand=False)
             stats_tbl.add_column(
                 "", no_wrap=True, width=20
@@ -224,10 +254,7 @@ class RenderSplits:
             self._footer_split_panel.height = 7
 
         elif blank:
-            self._footer_split_panel.renderable = (
-                "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
-            )
-            self._footer_split_panel.height = 0
+            self._footer_split_panel = self._footer_panel()
 
     def __rich__(self):
         # Only render the rest of the panels as agent logs are printed directly above Live region via console.print()

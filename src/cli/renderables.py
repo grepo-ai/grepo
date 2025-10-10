@@ -12,6 +12,7 @@ from rich.box import Box
 from rich.box import SIMPLE
 from rich.spinner import Spinner
 from rich.padding import Padding
+from rich.table import Table
 from src.cli.commands import Commands
 from src.cli.utils import color_palette
 
@@ -130,7 +131,7 @@ class RenderSplits:
         )
 
         self._footer_split_panel = Panel(
-            "[dim]Press / for commands (coming soon)[/]",
+            "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]",
             box=SIMPLE,
             height=0,
             padding=(0, 1, 0, 1),
@@ -196,7 +197,11 @@ class RenderSplits:
             self._footer_split_panel.height = 8
 
         elif exit_screen:
-            render_data = ""
+            stats_tbl = Table.grid(expand=False)
+            stats_tbl.add_column(
+                "", no_wrap=True, width=20
+            )  # width is used to add space between column values for each row
+            stats_tbl.add_column("", justify="left")
 
             token_usage_keys = {
                 "total_input_tokens": "Total input tokens",
@@ -211,19 +216,16 @@ class RenderSplits:
                 for key, value in self.renderable_data.items():
                     if key == "context_window_used":
                         continue
-                    render_data += f"{token_usage_keys.get(key)}: {value}\n"
+                    stats_tbl.add_row(token_usage_keys.get(key), str(value))
 
-            if render_data:
-                self._footer_split_panel.renderable = (
-                    f"[#9CAAF0][dim]{render_data}[/][/]"
-                )
-                self._footer_split_panel.box = SIMPLE
-                self._footer_split_panel.style = "dim"
-                self._footer_split_panel.height = 7
+            self._footer_split_panel.renderable = stats_tbl
+            self._footer_split_panel.box = SIMPLE
+            self._footer_split_panel.style = "dim"
+            self._footer_split_panel.height = 7
 
         elif blank:
             self._footer_split_panel.renderable = (
-                "[dim]Press / for commands (coming soon)[/]"
+                "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
             )
             self._footer_split_panel.height = 0
 

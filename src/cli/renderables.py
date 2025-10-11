@@ -106,7 +106,7 @@ class RenderSplits:
         self._previous_buffer = ""
         self.output_queue = output_queue
         self._log_history = ""
-        self._renderable_data = {}
+        self._renderable_data = self._default_stats()
         self.console = Console()
         # self._agent_logs = AgentLogs()  # Deprecated
 
@@ -131,6 +131,16 @@ class RenderSplits:
         )
 
         self._footer_split_panel = self._footer_panel()
+
+    def _default_stats(self):
+        stats_dict = {
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "session_cost": 0.0,
+        }
+        return stats_dict
 
     def _footer_panel(self, partial_render=False, **kwargs):
         if partial_render:
@@ -242,11 +252,10 @@ class RenderSplits:
                 "model_used": "Models used",
             }
 
-            if self.renderable_data:
-                for key, value in self.renderable_data.items():
-                    if key == "context_window_used":
-                        continue
-                    stats_tbl.add_row(token_usage_keys.get(key), str(value))
+            for key, value in self.renderable_data.items():
+                if key == "context_window_used":
+                    continue
+                stats_tbl.add_row(token_usage_keys.get(key), str(value))
 
             self._footer_split_panel.renderable = stats_tbl
             self._footer_split_panel.box = SIMPLE

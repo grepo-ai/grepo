@@ -17,10 +17,11 @@ class GlobalState(AgentState):
 
 
 def inject_user_prompt(user_guidelines):
-    user_guidelines = (
-        "You are also required to follow my project specific guidelines which are as follows:\n\n"
-        + user_guidelines
-    )
+    if user_guidelines:
+        user_guidelines = (
+            "You are also required to follow my project specific guidelines which are as follows:\n\n"
+            + user_guidelines
+        )
 
     SYSTEM_PROMPT = f"""
 

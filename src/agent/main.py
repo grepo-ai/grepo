@@ -1,3 +1,4 @@
+import os
 import json
 import time
 import threading
@@ -85,10 +86,11 @@ class Agent:
         self._ui_renders = {}
 
     def _get_system_prompt(self, root_dir):
-        # --- Read GREPO.md for system prompt and instructions ---
-        user_prompt_guidelines = Path(f"{root_dir}/AGENTS.md").read_text(
-            encoding="utf-8"
-        )
+        agents_md_path = f"{root_dir}/AGENTS.md"
+        user_prompt_guidelines = ""
+
+        if os.path.exists(agents_md_path):
+            user_prompt_guidelines = Path(agents_md_path).read_text(encoding="utf-8")
 
         self.system_prompt = self.llm_client.get_system_prompt(
             user_prompt=user_prompt_guidelines

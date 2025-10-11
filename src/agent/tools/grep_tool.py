@@ -19,8 +19,8 @@ def grep(
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> list[tuple[str, int, str]]:
     """
-    This function performs a recursive search on all directories/sub-directories from root directory and returns all matches found for the given query along
-    with file file_paths for each query match else returns empty list if no match is found
+    This function performs a recursive search on all directories/sub-directories from root directory and returns all matches found for the given query, tool
+    returns file_path, line number and matched line for each match of the query else it returns empty list if no match is found
     """
 
     file_paths = glob.glob(f"{os.getcwd()}/**/*.py", recursive=True)

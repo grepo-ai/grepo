@@ -92,9 +92,7 @@ class Agent:
         if os.path.exists(agents_md_path):
             user_prompt_guidelines = Path(agents_md_path).read_text(encoding="utf-8")
 
-        self.system_prompt = self.llm_client.get_system_prompt(
-            user_prompt=user_prompt_guidelines
-        )
+        return self.llm_client.get_system_prompt(user_prompt=user_prompt_guidelines)
 
     @property
     def config(self):

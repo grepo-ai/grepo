@@ -9,6 +9,30 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 import diff_match_patch as dmp_module
 
 
+def preprocess_dir(dir_path):
+    # Get all programming languages used in the project and .gitignore'd files
+    data_dict = {"prog_langs": [], "git_ignored_files": []}
+
+    for root, dirs, files in os.walk(dir_path):
+        if "." in root:  # skip .dir names eg: .venv
+            continue
+
+        # Check each file in the each root dir
+        for file in files:
+            if file == ".gitignore":
+                with open(os.path.join(root, file), "r") as git_file:
+                    for line_number, line in enumerate(git_file, 1):
+                        if line.strip() and not line.startswith("#"):
+                            data_dict["git_ignored_files"].append(line.strip())
+
+            file_extension = os.path.splitext(file)[1]
+            if file_extension and file_extension in [".py", ".js", ".ts"]:
+                if file_extension.strip(".") not in data_dict["prog_langs"]:
+                    data_dict["prog_langs"].append(file_extension.strip("."))
+
+    return data_dict
+
+
 def get_checkpointer():
     checkpointer = SqliteSaver(sqlite3.connect("grepo.db", check_same_thread=False))
     return checkpointer

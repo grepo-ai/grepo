@@ -14,6 +14,9 @@ from operator import add
 class GlobalState(AgentState):
     # edit_file_permissions: bool
     changed_code: Annotated[list[tuple], add]
+    languages: list[str]
+    root_dir: str
+    git_ignored_files: list[str]
 
 
 def inject_user_prompt(user_guidelines):
@@ -55,7 +58,7 @@ def inject_user_prompt(user_guidelines):
     - Before editing or writing code, read existing files to understand patterns and conventions
     - Use grep to find all usages of functions/classes before making breaking changes
     - Verify file and directory existence before performing write operations
-    - Chain tools logically: search → read → understand → edit/write
+    - Chain tools logically: search → code search -> read → understand → edit/write
 
     ## Code Generation Guidelines
 

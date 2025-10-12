@@ -11,6 +11,7 @@ def bg_query_processing(
     console,
     renderable_splits,
     session_uuid,
+    preprocessed_data,
     model="claude-sonnet-4-5-20250929",
     model_provider="anthropic",
     query_queue=None,
@@ -25,6 +26,7 @@ def bg_query_processing(
         output_queue=output_queue,
         model=model,
         model_provider=model_provider,
+        preprocessed_data=preprocessed_data,
     )
 
     while not stop_event.is_set():

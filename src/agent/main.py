@@ -101,7 +101,7 @@ class Agent:
     def _get_config(self):
         return {
             "configurable": {"thread_id": self.session_uuid},
-            "recursion_limit": 50,
+            "recursion_limit": 70,
             "callbacks": [langfuse_handler],
         }
 
@@ -137,6 +137,18 @@ class Agent:
 
     def get_messages(self):
         return self._compiled_graph.get_state(self._config).values.get("messages", [])
+
+    def update_state(self, **kwargs):
+        # Update agent's state with pre-processed data to be accessed during agent loop
+        agent_state = self._compiled_graph
+        agent_state.update_state(
+            self._config,
+            {
+                "languages": kwargs["prog_langs"],
+                "root_dir": kwargs["root_dir"],
+                "git_ignored_files": kwargs["git_ignored_files"],
+            },
+        )
 
     def update_messages(self, messages, compact=False):
         if compact:
@@ -611,7 +623,7 @@ class Agent:
                     tool_message = stream_message["tools"]["messages"][0].content
 
                     # Tool: List files
-                    if tool_name == "list_files" or "Error:" in tool_message:
+                    if tool_name == "list_files":
                         tree_list.add("[#FA5CB3]Analysing files and directories...[/]")
                         self._output_queue.append((tree_list, console))
 
@@ -643,12 +655,9 @@ class Agent:
 
                     # Tool: Grep
                     elif tool_name == "grep":
-                        if not tool_message:
-                            continue
-
                         if "Error:" in tool_message:
-                            tree_read.add(f"[#F76363]({tool_message})[/]")
-                            self._output_queue.append((tree_read, console))
+                            tree_grep.add("[#FC7C7C]Error: Not found[/]")
+                            self._output_queue.append((tree_grep, console))
                             continue
 
                         grep_content_list = json.loads(tool_message)
@@ -763,6 +772,7 @@ def initiate_agent(
     output_queue: deque,
     model_provider: str,
     model: str,
+    preprocessed_data: dict,
 ):
     # --- Create an Agent ---
     agent = Agent(
@@ -779,5 +789,9 @@ def initiate_agent(
     )
 
     agent._create()
+
+    # Populate state data with pre-processed information about codebase (like prog langugaes, .gitignore etc.)
+    preprocessed_data.update({"root_dir": root_dir})
+    agent.update_state(**preprocessed_data)
 
     return agent

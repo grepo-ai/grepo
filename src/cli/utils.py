@@ -28,7 +28,7 @@ grepo_md_theme = Theme(
         # Inline emphasis
         "markdown.em": f"italic {color_palette['light-purple']}",
         "markdown.strong": f"bold {color_palette['orange']}",
-        "markdown.code_inline": f"black on {color_palette['light-purple']}",
+        "markdown.code_inline": f"{color_palette['light-purple']}",
         # Links
         "markdown.link": color_palette["light-purple"],
         "markdown.link_url": color_palette["light-purple"],

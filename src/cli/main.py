@@ -6,12 +6,13 @@ from rich.live import Live
 from collections import deque
 
 
-from src.agent.utils import generate_session_uuid
+from src.agent.utils import generate_session_uuid, preprocess_dir
 from src.cli.commands import Commands
 from src.cli.terminal import GetchRaw, read_keystroke
 from src.cli.processing import bg_query_processing, bg_query_logs_processing
 from src.cli.renderables import render_intro, RenderSplits
 from src.cli.utils import grepo_md_theme
+from src.agent.state import GlobalState
 
 
 # --- Intial screen setup ---
@@ -24,6 +25,9 @@ if __name__ == "__main__":
 
     # Get root dir to read AGENTS.md file
     root_dir = os.getcwd()
+
+    # Run pre-processing to get information like programming languages used in codebase etc.
+    preprocessed_data = preprocess_dir(root_dir)
 
     # Chat session uuid
     session_uuid = generate_session_uuid()
@@ -48,7 +52,14 @@ if __name__ == "__main__":
     # Thread for processing input queries
     input_processing_thread = threading.Thread(
         target=bg_query_processing,
-        args=(root_dir, buffer, console, split_screens, session_uuid),
+        args=(
+            root_dir,
+            buffer,
+            console,
+            split_screens,
+            session_uuid,
+            preprocessed_data,
+        ),
         kwargs=thread_kwargs,
         daemon=True,
     )

@@ -209,3 +209,7 @@ cli/rich_exp2.py
 grepo.db
 grepo.db-shm
 grepo.db-wal
+
+
+# Grepo internal test files
+test.js

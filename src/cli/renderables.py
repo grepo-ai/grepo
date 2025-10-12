@@ -101,7 +101,7 @@ class AgentLogs:
 
 class RenderSplits:
     def __init__(self, output_queue, lock):
-        self.blank_box = Box("    \n" * 8, ascii=True)
+        # self.blank_box = Box("    \n" * 8, ascii=True)
         self.lock = lock
         self._previous_buffer = ""
         self.output_queue = output_queue
@@ -138,7 +138,7 @@ class RenderSplits:
             "total_output_tokens": 0,
             "cache_creation_input_tokens": 0,
             "cache_read_input_tokens": 0,
-            "session_cost": 0.0,
+            "session_cost": 0,
         }
         return stats_dict
 

@@ -3,6 +3,7 @@ import sqlite3
 import os
 import tempfile
 import shutil
+import json
 
 
 from langgraph.checkpoint.sqlite import SqliteSaver
@@ -175,3 +176,12 @@ def format_grep_results(results_list):
         # slice_res = res[2][:10] if len(res[2]) > 10 else res[2]
         formatted_res.append((res[0], f":{res[1]}"))
     return formatted_res
+
+
+def format_glob_results(path_list):
+    glob_tool_output = json.loads(path_list)
+
+    if isinstance(glob_tool_output, list):
+        return glob_tool_output
+
+    return

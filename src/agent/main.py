@@ -49,6 +49,7 @@ from agent.utils import (
     get_checkpointer,
     construct_code,
     format_grep_results,
+    format_glob_results,
 )
 from src.cli.utils import code_block_md_theme, color_palette
 
@@ -513,7 +514,8 @@ class Agent:
                         cost_stats["context_window_used"] = (
                             f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
                         )
-                        agent.cycle_stats = cost_stats
+
+                        agent.calculate_cycle_cost()
                         print("------ cycle costs after compaction ------")
                         print(agent.cycle_stats)
 
@@ -543,11 +545,13 @@ class Agent:
 
         # --- Text formatting ---
         console = Console()
-        tree_grep = Tree("[#7CFCA7]● Search[/]")
-        tree_list = Tree("[#7CFCA7]● List[/]")
-        tree_read = Tree("[#7CFCA7]● Read[/]")
-        tree_write = Tree("[#7CFCA7]● Write[/]")
-        tree_code_block = Tree("[#7CFCA7]● Code Search[/]")
+        tree_grep = Tree("[#FAFAFA]● [/][#7CFCA7]Search[/]")
+        tree_list = Tree("[#FAFAFA]● [/][#7CFCA7]List[/]")
+        tree_read = Tree("[#FAFAFA]● [/][#7CFCA7]Read[/]")
+        tree_write = Tree("[#FAFAFA]● [/][#7CFCA7]Write[/]")
+        tree_code_block = Tree("[#FAFAFA]● [/][#7CFCA7]Code Search[/]")
+        tree_glob = Tree("[#FAFAFA]● [/][#7CFCA7]Glob[/]")
+        tree_edit = Tree("[#FAFAFA]● [/][#7CFCA7]Edit[/]")
 
         self._ui_renders["console"] = console
         self._ui_renders["tree_list"] = tree_list
@@ -555,6 +559,8 @@ class Agent:
         self._ui_renders["tree_read"] = tree_read
         self._ui_renders["tree_write"] = tree_write
         self._ui_renders["tree_code_block"] = tree_code_block
+        self._ui_renders["tree_glob"] = tree_glob
+        self._ui_renders["tree_edit"] = tree_edit
 
         return self._compiled_graph
 
@@ -578,6 +584,8 @@ class Agent:
         tree_grep = self._ui_renders["tree_grep"]
         tree_read = self._ui_renders["tree_read"]
         tree_write = self._ui_renders["tree_write"]
+        tree_glob = self._ui_renders["tree_glob"]
+        tree_edit = self._ui_renders["tree_edit"]
         tree_code_block = self._ui_renders["tree_code_block"]
 
         messages = [HumanMessage(content=human_input)]
@@ -632,7 +640,7 @@ class Agent:
                         if tool_message is None:
                             continue
 
-                        if "Error:" in tool_message:
+                        if tool_message.startswith("Error:"):
                             tree_read.add(f"[#F76363]({tool_message})[/]")
                             self._output_queue.append((tree_read, console))
                             continue
@@ -655,7 +663,7 @@ class Agent:
 
                     # Tool: Grep
                     elif tool_name == "grep":
-                        if "Error:" in tool_message:
+                        if tool_message.startswith("Error:"):
                             tree_grep.add("[#FC7C7C]Error: Not found[/]")
                             self._output_queue.append((tree_grep, console))
                             continue
@@ -684,7 +692,7 @@ class Agent:
 
                     # Tool: Get Code Definition
                     elif tool_name == "get_code_block":
-                        if "Error:" in tool_message:
+                        if tool_message.startswith("Error:"):
                             continue
 
                         self._output_queue.append((tree_code_block, console))
@@ -700,9 +708,35 @@ class Agent:
 
                     # Tool: Write
                     elif tool_name == "write":
-                        if "Error:" in tool_message:
+                        if tool_message.startswith("Error:"):
                             continue
-                        # TODO: --- Complete the logic ---
+
+                    # Tool: Glob
+                    elif tool_name == "glob":
+                        if tool_message.startswith("Error:"):
+                            continue
+
+                        formatted_output = format_glob_results(tool_message)
+                        sub_tree_glob = Tree(
+                            f"[#FA5CB3]Pattern matched ({len(formatted_output)})[/]"
+                        )
+
+                        tree_glob.add(sub_tree_glob)
+                        root_dir = agent.agent_state.values.get("root_dir")
+
+                        for path in formatted_output:
+                            sub_tree_glob.add(
+                                Text(
+                                    path,
+                                    style=Style(
+                                        link=f"vscode://file/{root_dir}/{path}:1",
+                                        underline=False,
+                                        color=color_palette["light-purple"],
+                                    ),
+                                )
+                            )
+
+                        self._output_queue.append((tree_glob, console))
 
                 # Stream chunk type 3: Interrupt response
                 elif stream_message.get("__interrupt__"):

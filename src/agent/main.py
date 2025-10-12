@@ -547,7 +547,7 @@ class Agent:
         tree_list = Tree("[#7CFCA7]● List[/]")
         tree_read = Tree("[#7CFCA7]● Read[/]")
         tree_write = Tree("[#7CFCA7]● Write[/]")
-        tree_code_block = Tree("[#7CFCA7]● Code[/]")
+        tree_code_block = Tree("[#7CFCA7]● Code Search[/]")
 
         self._ui_renders["console"] = console
         self._ui_renders["tree_list"] = tree_list

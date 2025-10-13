@@ -1,5 +1,6 @@
 import time
 import queue
+import threading
 from rich.text import Text
 from rich.padding import Padding
 from src.agent.main import initiate_agent
@@ -28,6 +29,18 @@ def bg_query_processing(
         model_provider=model_provider,
         preprocessed_data=preprocessed_data,
     )
+
+    status_thread = threading.Thread(
+        target=compaction_status_updates,
+        args=(
+            renderable_splits,
+            console,
+            agent,
+            stop_event,
+        ),
+        daemon=True,
+    )
+    status_thread.start()
 
     while not stop_event.is_set():
         try:
@@ -77,3 +90,12 @@ def bg_query_logs_processing(
             pass
 
         time.sleep(0.1)
+
+
+def compaction_status_updates(renderable_splits, console, agent, stop_event=None):
+    while not stop_event.is_set():
+        if renderable_splits._commands_palette_active:
+            continue
+
+        renderable_splits.update_footer_split(compaction=agent._active_auto_compaction)
+        time.sleep(1)

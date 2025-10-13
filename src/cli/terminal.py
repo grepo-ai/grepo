@@ -36,7 +36,7 @@ def read_keystroke():
     # logical key i.e arrow key (up/down/left/right)
 
     arrow_key_seq = ch
-    seq_time_range = time.monotonic() + 0.03
+    seq_time_range = time.monotonic() + 0.04
 
     while time.monotonic() < seq_time_range:
         rlist, _, _ = select.select([sys.stdin], [], [], 0.01)

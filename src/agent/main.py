@@ -85,6 +85,7 @@ class Agent:
         self._last_message_id = (-1, None)
         self._output_queue = output_queue
         self._ui_renders = {}
+        self._active_auto_compaction = False
 
     def _get_system_prompt(self, root_dir):
         agents_md_path = f"{root_dir}/AGENTS.md"
@@ -436,6 +437,9 @@ class Agent:
                 if session_context_size > 10000 or float(
                     cycle_cost["context_window_used"][:-1]
                 ) >= float(f"{95:.2f}"):
+                    # Render an indicator that context compaction is in process
+                    agent._active_auto_compaction = True
+
                     print("---- cycle costs before compaction ----")
                     print(cycle_cost)
                     print("------ Attempting Compaction -----")
@@ -518,6 +522,8 @@ class Agent:
                         agent.calculate_cycle_cost()
                         print("------ cycle costs after compaction ------")
                         print(agent.cycle_stats)
+
+                agent._active_auto_compaction = False
 
                 # Poll every 5 secs and check if compaction is required (keeping it time based for now to simplify logic)
                 time.sleep(5)

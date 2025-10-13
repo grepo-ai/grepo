@@ -108,6 +108,9 @@ class RenderSplits:
         self._log_history = ""
         self._renderable_data = self._default_stats()
         self.console = Console()
+        self._thinking = False
+        self._compaction = False
+        self._commands_palette_active = False
         # self._agent_logs = AgentLogs()  # Deprecated
 
         # self._upper_split_panel = Panel(
@@ -130,7 +133,7 @@ class RenderSplits:
             padding=(0, 1, 0, 1),
         )
 
-        self._footer_split_panel = self._footer_panel()
+        self._footer_split_panel = self._footer_panel(init=True)
 
     def _default_stats(self):
         stats_dict = {
@@ -142,19 +145,49 @@ class RenderSplits:
         }
         return stats_dict
 
-    def _footer_panel(self, partial_render=False, **kwargs):
-        if partial_render:
-            if kwargs.get("thinking", False):
+    def _footer_panel(self, partial_render=False, init=False, blank=False, **kwargs):
+        footer_tbl = Table.grid(expand=True)
+        footer_tbl.add_column("", ratio=3)
+        footer_tbl.add_column("", ratio=1, justify="right", no_wrap=True)
+        footer_tbl.add_column("", ratio=1, justify="right", no_wrap=True)
+
+        if init or blank:
+            panel = Panel(
+                footer_tbl,
+                box=SIMPLE,
+                height=0,
+                padding=(0, 1, 0, 1),
+            )
+
+            return panel
+
+        if self._commands_palette_active:
+            if kwargs.get("list_all_commands"):
+                return Commands.main_commands_selector()
+
+            if kwargs.get("dynamic_selection", None) is not None:
+                return Commands.main_commands_selector(kwargs["dynamic_selection"])
+
+        elif partial_render:
+            if self._thinking:
                 left_text = "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
                 right_text = "[#B6CBFA]Thinking on (tab to toggle)[/]"
             else:
                 left_text = "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
                 right_text = "[dim]Thinking off (tab to toggle)[/]"
 
-            footer_tbl = Table.grid(expand=True)
-            footer_tbl.add_column("", ratio=3)
-            footer_tbl.add_column("", ratio=1, justify="right", no_wrap=True)
-            footer_tbl.add_row(f"{left_text}", f"{right_text}")
+            if self._compaction:
+                footer_tbl.add_row(
+                    f"{left_text}",
+                    Spinner(
+                        "dots3",
+                        text="[#FCE2B3]compacting context[/]",
+                        style="#FCE2B3",
+                    ),
+                    f"{right_text}",
+                )
+            else:
+                footer_tbl.add_row(f"{left_text}", "", f"{right_text}")
 
             return footer_tbl
 
@@ -162,19 +195,13 @@ class RenderSplits:
             left_text = "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
             right_text = "[dim]Thinking off (tab to toggle)[/]"
 
-        footer_tbl = Table.grid(expand=True)
-        footer_tbl.add_column("", ratio=3)
-        footer_tbl.add_column("", ratio=1, justify="right", no_wrap=True)
+            footer_tbl.add_row(
+                f"{left_text}",
+                "",
+                f"{right_text}",
+            )
 
-        footer_tbl.add_row(f"{left_text}", f"{right_text}")
-
-        panel = Panel(
-            footer_tbl,
-            box=SIMPLE,
-            height=0,
-            padding=(0, 1, 0, 1),
-        )
-        return panel
+            return panel
 
     @property
     def renderable_data(self):
@@ -201,7 +228,12 @@ class RenderSplits:
         # This is to prevent frequent updates when buffer didnt even change
         self._previous_buffer = buffer
 
-    def update_spinner(self, spin_it=True, status_text=None, data: str = None):
+    def update_spinner(
+        self,
+        spin_it: bool = True,
+        status_text: str = None,
+        data: str = None,
+    ):
         status_fillers = ["Jellying...", "Chewing GPUs...", "Poking intelligence..."]
 
         if not status_text:
@@ -209,7 +241,7 @@ class RenderSplits:
 
         if spin_it:
             self.spinner.renderable = Spinner(
-                "star", text=f"[#F27F4E]{status_text}[/]", style="#F27F4E"
+                "dots", text=f"[#FC814C]{status_text}[/]", style="#FC814C"
             )
 
         elif not spin_it and data is not None:
@@ -221,19 +253,28 @@ class RenderSplits:
             )
 
     def update_footer_split(self, blank=False, **kwargs):
-        if kwargs.get("list_all_commands", False):
-            self._footer_split_panel.renderable = Commands.main_commands_selector()
+        if kwargs.get("list_all_commands", None) is not None:
+            self._footer_split_panel.renderable = self._footer_panel(
+                list_all_commands=kwargs.get("list_all_commands")
+            )
             self._footer_split_panel.height = 8
 
         elif kwargs.get("dynamic_selection", None) is not None:
-            self._footer_split_panel.renderable = Commands.main_commands_selector(
-                kwargs["dynamic_selection"]
+            self._footer_split_panel.renderable = self._footer_panel(
+                dynamic_selection=kwargs.get("dynamic_selection")
             )
             self._footer_split_panel.height = 8
 
         elif kwargs.get("thinking", None) is not None:
+            self._thinking = kwargs.get("thinking")
             self._footer_split_panel.renderable = self._footer_panel(
-                partial_render=True, thinking=kwargs["thinking"]
+                partial_render=True
+            )
+
+        elif kwargs.get("compaction", None) is not None:
+            self._compaction = kwargs.get("compaction")
+            self._footer_split_panel.renderable = self._footer_panel(
+                partial_render=True
             )
 
         elif kwargs.get("exit_screen", False):
@@ -263,7 +304,7 @@ class RenderSplits:
             self._footer_split_panel.height = 7
 
         elif blank:
-            self._footer_split_panel = self._footer_panel()
+            self._footer_split_panel = self._footer_panel(blank=True)
 
     def __rich__(self):
         # Only render the rest of the panels as agent logs are printed directly above Live region via console.print()

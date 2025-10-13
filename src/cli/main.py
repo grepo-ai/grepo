@@ -128,14 +128,16 @@ if __name__ == "__main__":
 
                         # Show commands palette and switch live region flow
                         if char == "/" and len(buffer) == 1:
+                            split_screens._commands_palette_active = True
                             split_screens.update_footer_split(list_all_commands=True)
-                            output = Commands(
+                            selected_command = Commands(
                                 console=console, rendered_regions=split_screens
                             ).show()
 
-                            buffer += output
+                            buffer += selected_command
                             split_screens.update_lower_split(console, buffer)
                             split_screens.update_footer_split(blank=True)
+                            split_screens._commands_palette_active = False
 
                 # Ctrl-C keystroke
                 except KeyboardInterrupt:

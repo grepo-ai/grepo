@@ -13,6 +13,7 @@ from rich.box import SIMPLE
 from rich.spinner import Spinner
 from rich.padding import Padding
 from rich.table import Table
+from rich.tree import Tree
 from src.cli.commands import Commands
 from src.cli.utils import color_palette
 
@@ -314,3 +315,55 @@ class RenderSplits:
             self._lower_split_panel,
             self._footer_split_panel,
         )
+
+
+@dataclass(slots=True)
+class TreeRender:
+    """
+    This dataclass is used for managing lifecycle of rich tree objects
+    as well as for rendering tool calls generated data as tree objects.
+    """
+
+    node_map: dict[int, set[str]] = field(default_factory=dict)
+
+    def build_tree(self, name):
+        tree_map = {
+            "grep": Tree("[#FAFAFA]● [/][#7CFCA7]Search[/]"),
+            "list": Tree("[#FAFAFA]● [/][#7CFCA7]List[/]"),
+            "read": Tree("[#FAFAFA]● [/][#7CFCA7]Read[/]"),
+            "write": Tree("[#FAFAFA]● [/][#7CFCA7]Write[/]"),
+            "code_block": Tree("[#FAFAFA]● [/][#7CFCA7]Code Search[/]"),
+            "glob": Tree("[#FAFAFA]● [/][#7CFCA7]Glob[/]"),
+            "edit": Tree("[#FAFAFA]● [/][#7CFCA7]Edit[/]"),
+        }
+
+        return tree_map.get(name)
+
+    def add_leaf(self, tree_type: Tree, values: list):
+        if id(tree_type) not in self.node_map:
+            self.node_map[id(tree_type)] = set()
+
+        for val in values:
+            if val in self.node_map[id(tree_type)]:
+                continue
+            self.node_map[id(tree_type)].add(val)
+            tree_type.add(val)
+
+
+if __name__ == "__main__":
+    import time
+
+    console = Console()
+
+    tree_render = TreeRender()
+    grep_tree = tree_render.build_tree(name="grep")
+    paths = ["/src/agent/main.py", "/src/cli/main.py", "/src/agent/tools.py"]
+
+    tree_render.add_leaf(grep_tree, values=paths)
+    console.print(grep_tree)
+
+    time.sleep(2)
+
+    new_path = ["/src/cli/mains.py"]
+    tree_render.add_leaf(grep_tree, values=new_path)
+    console.print(grep_tree)

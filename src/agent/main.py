@@ -463,7 +463,7 @@ class Agent:
                         agent.update_messages(
                             messages=[
                                 HumanMessage(
-                                    content="Generate a summary of the entire conversation."
+                                    content="Summary of the entire conversation."
                                 ),
                                 generated_summary,
                             ],

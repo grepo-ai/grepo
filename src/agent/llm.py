@@ -138,15 +138,8 @@ class LLMInterface:
     def generate_summary(self, messages):
         prompt = self._summary_system_prompt(messages)
 
-        system_prompt = SystemMessage(
-            content=[
-                {
-                    "type": "text",
-                    "text": prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ]
-        )
+        system_prompt = SystemMessage(content=prompt)
+
         messages = [
             system_prompt,
             HumanMessage(content="Generate a detailed summary of the conversation."),

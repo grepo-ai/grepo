@@ -3,6 +3,7 @@
 from tree_sitter import Language, Parser
 import tree_sitter_python as tspython
 from pprint import pprint
+from src.code_parser import CodeWalker, ParserLanguages
 
 
 code = """
@@ -39,3 +40,30 @@ test_query = """(class_definition
 stmt_str_query = py_language.query(test_query)
 
 tree_captures = stmt_str_query.captures(tree.root_node)
+
+
+# --- Test code ---
+if __name__ == "__main__":
+    from pathlib import Path
+    import json
+
+    abs_file_path = "/Users/tausif/grepo-main-env/grepo/src/hello.js"
+    file_path = str(Path(abs_file_path))
+
+    # Create a parser
+    code_walker = CodeWalker(ParserLanguages.JAVASCRIPT.value)
+
+    # Pass in the code to be parsed
+    encoded_code = CodeWalker.encode_code(file_paths=[abs_file_path])["hello.js"]
+
+    # Construct code map with extracted code blocks (classes, functions and methods)
+    symbols_map = code_walker.extract_symbols(encoded_code, file_path)
+
+    print(json.dumps(symbols_map, indent=2))
+
+    from rich.console import Console
+    from rich.tree import Tree
+
+    value = 0
+    console = Console()
+    tree = Tree("[#E8B641]Search[/]")

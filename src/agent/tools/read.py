@@ -19,6 +19,8 @@ def read_file(file_path: str) -> list[Optional[str]]:
 
     file_contents = []
     try:
+        # TODO: Add check for reading special files like pyproject.toml upto certain lines only
+        # same for other language ecosystem files.
         with open(file_path, "r") as file:
             for line in file:
                 file_contents.append(line)

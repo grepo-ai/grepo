@@ -172,7 +172,7 @@ class RenderSplits:
         elif partial_render:
             if self._thinking:
                 left_text = "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
-                right_text = "[#B6CBFA]Thinking on (tab to toggle)[/]"
+                right_text = "[#B6CBFA]Thinking on[/] [dim](tab to toggle)[/]"
             else:
                 left_text = "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
                 right_text = "[dim]Thinking off (tab to toggle)[/]"

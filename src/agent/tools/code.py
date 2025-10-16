@@ -52,6 +52,8 @@ def get_code_block(
             raise ValueError("file_path is not a code file")
 
         source_code_lang = language_map.get(file_extension.strip("."))
+        if not source_code_lang:
+            raise ValueError("Not a valid code file with this extension")
 
         code_walker = CodeWalker(getattr(ParserLanguages, f"{source_code_lang}").value)
 
@@ -79,5 +81,4 @@ def get_code_block(
     raise ValueError("Provide a valid file_path argument")
 
 
-# TODO: Maybe consider doing grep from this code tool as well for code block search across codebase
 # Idea: Multi-threaded tree cursor based traversal of each file.

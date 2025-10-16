@@ -12,6 +12,7 @@ color_palette = {
     "grepo_logo": "#8FF4FF",
     "intro-text-pink": "#FC69FF",
     "light-purple": "#B6C8FA",
+    "white": "#FCFCFC",
 }
 
 
@@ -24,10 +25,10 @@ grepo_md_theme = Theme(
         "markdown.h3": f"bold {color_palette['pink']}",
         "markdown.h4": f"bold {color_palette['orange']}",
         "markdown.h5": f"bold {color_palette['cyan']}",
-        "markdown.h6": f"bold {color_palette['green']}",
+        "markdown.h6": f"bold {color_palette['light-purple']}",
         # Inline emphasis
-        "markdown.em": f"italic {color_palette['light-purple']}",
-        "markdown.strong": f"bold {color_palette['orange']}",
+        "markdown.em": f"italic {color_palette['white']}",
+        "markdown.strong": f"bold {color_palette['intro-text-pink']}",
         "markdown.code_inline": f"{color_palette['light-purple']}",
         # Links
         "markdown.link": color_palette["light-purple"],

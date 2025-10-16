@@ -52,6 +52,7 @@ from agent.utils import (
     format_glob_results,
 )
 from src.cli.utils import code_block_md_theme, color_palette
+from src.code_parser import language_map
 
 
 class Agent:
@@ -67,11 +68,14 @@ class Agent:
         session_uuid: str,
         stream_mode: Union[str, list],
         config: dict = {},
+        preprocessed_env_data: dict = {},
         auto_compact: bool = False,
     ):
         self.llm_client = LLMInterface(model=model, llm_provider=provider)
         self.model_interface: Union[ChatAnthropic, None] = self.llm_client.client()
-        self.system_prompt: SystemMessage = self._get_system_prompt(root_dir)
+        self.system_prompt: SystemMessage = self._get_system_prompt(
+            root_dir, preprocessed_env_data
+        )
         self.tools: list[BaseTool] = tools
         self.state_schema: GlobalState = schema
         self.stream_mode: Optional[list[str]] = stream_mode
@@ -87,14 +91,22 @@ class Agent:
         self._ui_renders = {}
         self._active_auto_compaction = False
 
-    def _get_system_prompt(self, root_dir):
+    def _get_system_prompt(self, root_dir, preprocessed_env_data):
         agents_md_path = f"{root_dir}/AGENTS.md"
         user_prompt_guidelines = ""
 
         if os.path.exists(agents_md_path):
             user_prompt_guidelines = Path(agents_md_path).read_text(encoding="utf-8")
 
-        return self.llm_client.get_system_prompt(user_prompt=user_prompt_guidelines)
+        languages = ""
+        for lang in preprocessed_env_data["prog_langs"]:
+            languages += f"{language_map.get(lang)}, "
+
+        return self.llm_client.get_system_prompt(
+            user_prompt=user_prompt_guidelines,
+            root_dir=root_dir,
+            programming_langs=languages,
+        )
 
     @property
     def config(self):
@@ -611,9 +623,8 @@ class Agent:
                 # Stream chunk type 1: Agent response
                 if stream_message.get("agent"):
                     ai_messages = stream_message["agent"]["messages"][0].content
-
                     if isinstance(ai_messages, list):
-                        for msg in ai_messages:
+                        for index, msg in enumerate(ai_messages):
                             if msg.get("thinking"):
                                 self._output_queue.append(
                                     (
@@ -623,10 +634,17 @@ class Agent:
                                 )
 
                             elif msg.get("text"):
-                                self._output_queue.append((f"{msg['text']}", console))
+                                if index == 0:
+                                    self._output_queue.append(
+                                        (f"[#FCFCFC]●[/] {msg['text']}\n", console)
+                                    )
+                                else:
+                                    self._output_queue.append(
+                                        (f"{msg['text']}\n", console)
+                                    )
                     else:
                         markdown_text = Markdown(
-                            ai_messages, code_theme=code_block_md_theme
+                            f"*●* {ai_messages}\n", code_theme=code_block_md_theme
                         )
                         self._output_queue.append((markdown_text, console))
 
@@ -826,6 +844,7 @@ def initiate_agent(
         auto_compact=True,
         output_queue=output_queue,
         session_uuid=session_uuid,
+        preprocessed_env_data=preprocessed_data,
     )
 
     agent._create()

@@ -1,4 +1,5 @@
 import os
+import sys
 import threading
 from queue import SimpleQueue
 from rich.console import Console

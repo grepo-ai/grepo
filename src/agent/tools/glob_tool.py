@@ -17,8 +17,8 @@ GLOB_TOOL_DESCRIPTION = """
 This tool is useful when you need to find a path by a specific pattern.
 
 ## IMPORTANT
-  - Pattern can be an absolute path /usr/src/hello.py (finds this particular path in /usr/src directory) or
-    it could be a relative pattern like /usr/src/*.py (finds all paths ending with .py in /usr/src directory)
+  - Pattern can be an absolute path /abc/src/hello.py (finds this particular path in /abc/src directory) or
+    it could be a relative pattern like /abc/src/*.py (finds all paths ending with .py in /abc/src directory)
   - If a pattern has ** in it then directory has to be searched recursively for example
     /usr/**/*.py this will search for all directories, sub-directories starting from /usr/ and find all paths ending with .py
 """
@@ -26,7 +26,11 @@ This tool is useful when you need to find a path by a specific pattern.
 
 # TODO: Think more on possible edge cases and add examples in tool description
 @tool(description=GLOB_TOOL_DESCRIPTION)
-def glob(pattern: str) -> list[str]:
+def glob(
+    pattern: str,
+    state: Annotated[GlobalState, InjectedState],
+    tool_call_id: Annotated[str, InjectedToolCallId],
+) -> list[str]:
     recursive = True if "**" in pattern else False
 
     # We show 100 files at max unless user enforces to show more files
@@ -34,13 +38,16 @@ def glob(pattern: str) -> list[str]:
 
     # TODO: Consider using graph state variables to ensure no repeated files are shown and use graph state variables
     # as cache for previous tool runs results infact use this approach for other tools as well.
+
     results = []
     pathnames = std_glob.iglob(pattern, recursive=recursive)
 
     for path in pathnames:
-        if len(results) > 100:
+        if len(results) >= 100:
             break
-        results.append(path)
+        for ignored_path in state["git_ignored_files"]:
+            if ignored_path not in path and path not in results:
+                results.append(path)
 
     if results:
         return results

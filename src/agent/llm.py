@@ -74,8 +74,11 @@ class LLMInterface:
 
         return self._llm_client
 
-    def get_system_prompt(self, user_prompt):
-        self._system_prompt = inject_user_prompt(user_prompt)
+    def get_system_prompt(self, user_prompt, root_dir, programming_langs):
+        self._system_prompt = inject_user_prompt(
+            user_prompt, root_dir, programming_langs
+        )
+
         if self.llm_provider == "anthropic":
             system_prompt = SystemMessage(
                 content=[

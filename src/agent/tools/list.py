@@ -26,6 +26,7 @@ Takes a directory path and a boolean argument recursive as inputs.
 def list_files(
     dir_path: str,
     recursive: bool,
+    state: Annotated[GlobalState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> Union[Command, list[str]]:
     path_exists = os.path.exists(dir_path)
@@ -41,10 +42,19 @@ def list_files(
 
     if recursive:
         file_paths = glob.glob(f"{dir_path}/**", recursive=True)
+
     else:
         file_paths = glob.glob(f"{dir_path}/*")
 
     if file_paths:
-        return file_paths
+        actual_file_paths = []
+        for path in file_paths:
+            # TODO : This check is only able to validate entire file path not for git ignored dirs
+            # improve logic. Review trace - 6154f081165fc05bb55362ed3c095466
+            for ignored_path in state["git_ignored_files"]:
+                if ignored_path not in path and path not in actual_file_paths:
+                    actual_file_paths.append(path)
+
+        return actual_file_paths
 
     raise ValueError("No matches found for the path.")

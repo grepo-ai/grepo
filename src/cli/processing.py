@@ -56,7 +56,7 @@ def bg_query_processing(
 
                 else:
                     output_queue.append(
-                        (Text(f"\n{query} \n", style="#FAFAFA on #333333"), console)
+                        (Text(f"\n{query} \n", style="#FAFAFA on #383838"), console)
                     )
                     agent.invoke(
                         renderable_splits,

@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass, field
 import pyfiglet
 import random
-from typing import Any
+from typing import Any, Union
 
 
 from rich.console import Console, ConsoleOptions, Group, RenderResult
@@ -324,30 +324,54 @@ class TreeRender:
     as well as for rendering tool calls generated data as tree objects.
     """
 
-    node_map: dict[int, set[str]] = field(default_factory=dict)
+    node_map: dict[str, tuple[Tree, set[Union[str, int]]]] = field(default_factory=dict)
 
-    def build_tree(self, name):
+    def build_tree(self, id, name, data=None):
         tree_map = {
-            "grep": Tree("[#FAFAFA]● [/][#7CFCA7]Search[/]"),
-            "list": Tree("[#FAFAFA]● [/][#7CFCA7]List[/]"),
-            "read": Tree("[#FAFAFA]● [/][#7CFCA7]Read[/]"),
-            "write": Tree("[#FAFAFA]● [/][#7CFCA7]Write[/]"),
-            "code_block": Tree("[#FAFAFA]● [/][#7CFCA7]Code Search[/]"),
-            "glob": Tree("[#FAFAFA]● [/][#7CFCA7]Glob[/]"),
-            "edit": Tree("[#FAFAFA]● [/][#7CFCA7]Edit[/]"),
+            "grep": Tree("[#FC69FF]● [/][#7AFF85][bold]Search[/bold][/]"),
+            "list": Tree(f"[#FC69FF]● [/][#7AFF85][bold]List[/bold][/] ({data})"),
+            "read": Tree("[#FC69FF]● [/][#7AFF85][bold]Read[/bold][/]"),
+            "write": Tree(f"[#FC69FF]● [/][#7AFF85]Write[/] ({data})"),
+            "code_search": Tree(
+                f"[#FC69FF]● [/][#7AFF85][bold]Code Search[/bold][/] ({data})"
+            ),
+            "glob": Tree(f"[#FC69FF]● [/][#7AFF85][bold]Glob[/bold][/] ({data})"),
+            "edit": Tree(f"[#FC69FF]● [/][#7AFF85][bold]Edit[/bold][/] ({data})"),
+            "tree": Tree(f"{data}[/]"),
         }
 
-        return tree_map.get(name)
+        self.node_map[id] = (tree_map.get(name), set())
 
-    def add_leaf(self, tree_type: Tree, values: list):
-        if id(tree_type) not in self.node_map:
-            self.node_map[id(tree_type)] = set()
+    def get_tree(self, id: str):
+        if id in self.node_map:
+            return self.node_map.get(id)[0]
+
+    def get_tree_leafs(self, id):
+        if id in self.node_map:
+            return self.node_map.get(id)[1]
+
+    def add_leaf(self, id: str, values: list):
+        if id not in self.node_map:
+            raise ValueError("Tree does not exist")
 
         for val in values:
-            if val in self.node_map[id(tree_type)]:
-                continue
-            self.node_map[id(tree_type)].add(val)
-            tree_type.add(val)
+            if isinstance(val, tuple):
+                if val[0] in self.node_map[id][1]:
+                    continue
+
+                # Add to Tree object
+                self.node_map[id][0].add(val[1])
+                # Add to set
+                self.node_map[id][1].add(val[0])
+
+            else:
+                if val in self.node_map[id][1]:
+                    continue
+
+                # Add to Tree object
+                self.node_map[id][0].add(val)
+                # Add to set
+                self.node_map[id][1].add(val)
 
 
 if __name__ == "__main__":

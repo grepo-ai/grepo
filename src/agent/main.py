@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import uuid
 import threading
 from typing import Union, Optional
 from collections import deque
@@ -50,9 +51,11 @@ from agent.utils import (
     construct_code,
     format_grep_results,
     format_glob_results,
+    format_list_files_results,
 )
 from src.cli.utils import code_block_md_theme, color_palette
 from src.code_parser import language_map
+from src.cli.renderables import TreeRender
 
 
 class Agent:
@@ -563,22 +566,7 @@ class Agent:
 
         # --- Text formatting ---
         console = Console()
-        tree_grep = Tree("[#FAFAFA]● [/][#7CFCA7]Search[/]")
-        tree_list = Tree("[#FAFAFA]● [/][#7CFCA7]List[/]")
-        tree_read = Tree("[#FAFAFA]● [/][#7CFCA7]Read[/]")
-        tree_write = Tree("[#FAFAFA]● [/][#7CFCA7]Write[/]")
-        tree_code_block = Tree("[#FAFAFA]● [/][#7CFCA7]Code Search[/]")
-        tree_glob = Tree("[#FAFAFA]● [/][#7CFCA7]Glob[/]")
-        tree_edit = Tree("[#FAFAFA]● [/][#7CFCA7]Edit[/]")
-
         self._ui_renders["console"] = console
-        self._ui_renders["tree_list"] = tree_list
-        self._ui_renders["tree_grep"] = tree_grep
-        self._ui_renders["tree_read"] = tree_read
-        self._ui_renders["tree_write"] = tree_write
-        self._ui_renders["tree_code_block"] = tree_code_block
-        self._ui_renders["tree_glob"] = tree_glob
-        self._ui_renders["tree_edit"] = tree_edit
 
         return self._compiled_graph
 
@@ -595,16 +583,7 @@ class Agent:
         human_input,
     ):
         agent = self
-
-        # TODO: Add Trees for edit file and glob tools
         console = self._ui_renders["console"]
-        tree_list = self._ui_renders["tree_list"]
-        tree_grep = self._ui_renders["tree_grep"]
-        tree_read = self._ui_renders["tree_read"]
-        tree_write = self._ui_renders["tree_write"]
-        tree_glob = self._ui_renders["tree_glob"]
-        tree_edit = self._ui_renders["tree_edit"]
-        tree_code_block = self._ui_renders["tree_code_block"]
 
         messages = [HumanMessage(content=human_input)]
 
@@ -618,13 +597,64 @@ class Agent:
             running_agent = agent.stream(
                 input=input_type,
             )
+            parent_tree = TreeRender()
+            sub_tree_grep_id = uuid.uuid4().hex
+            sub_tree_glob_id = uuid.uuid4().hex
 
             for stream_message in running_agent:
                 # Stream chunk type 1: Agent response
                 if stream_message.get("agent"):
-                    ai_messages = stream_message["agent"]["messages"][0].content
-                    if isinstance(ai_messages, list):
-                        for index, msg in enumerate(ai_messages):
+                    ai_message = stream_message["agent"]["messages"][0]
+                    ai_messages_content = stream_message["agent"]["messages"][0].content
+
+                    # Render Tree objects if the LLM response has any subsequent tool calls
+                    if isinstance(ai_message, AIMessage) and hasattr(
+                        ai_message, "tool_calls"
+                    ):
+                        for tool_call in ai_message.tool_calls:
+                            if tool_call.get("name") == "list_files":
+                                parent_tree.build_tree(
+                                    id=tool_call.get("id"),
+                                    name="list",
+                                    data=tool_call.get("args", {}).get("dir_path"),
+                                )
+
+                            elif tool_call.get("name") == "read_file":
+                                parent_tree.build_tree(
+                                    id=tool_call.get("id"),
+                                    name="read",
+                                )
+
+                            elif tool_call.get("name") == "glob":
+                                parent_tree.build_tree(
+                                    id=tool_call.get("id"),
+                                    name="glob",
+                                    data=tool_call.get("args", {}).get("pattern"),
+                                )
+
+                            elif tool_call.get("name") == "grep":
+                                parent_tree.build_tree(
+                                    id=tool_call.get("id"),
+                                    name="grep",
+                                    data=tool_call.get("args", {}).get("query"),
+                                )
+
+                            elif tool_call.get("name") == "get_code_block":
+                                parent_tree.build_tree(
+                                    id=tool_call.get("id"),
+                                    name="code_search",
+                                    data=tool_call.get("args", {}).get("file_path"),
+                                )
+
+                            elif tool_call.get("name") == "write":
+                                parent_tree.build_tree(
+                                    id=tool_call.get("id"),
+                                    name="write",
+                                    data=tool_call.get("args", {}).get("pathname"),
+                                )
+
+                    if isinstance(ai_messages_content, list):
+                        for index, msg in enumerate(ai_messages_content):
                             if msg.get("thinking"):
                                 self._output_queue.append(
                                     (
@@ -642,9 +672,11 @@ class Agent:
                                     self._output_queue.append(
                                         (f"{msg['text']}\n", console)
                                     )
+
                     else:
                         markdown_text = Markdown(
-                            f"*●* {ai_messages}\n", code_theme=code_block_md_theme
+                            f"*●* {ai_messages_content}\n",
+                            code_theme=code_block_md_theme,
                         )
                         self._output_queue.append((markdown_text, console))
 
@@ -653,11 +685,18 @@ class Agent:
                     # Check type of tool and populate tree alerts accordingly
                     tool_name = stream_message["tools"]["messages"][0].name
                     tool_message = stream_message["tools"]["messages"][0].content
+                    tool_id = stream_message["tools"]["messages"][0].tool_call_id
 
                     # Tool: List files
                     if tool_name == "list_files":
-                        tree_list.add("[#FA5CB3]Analysing files and directories...[/]")
-                        self._output_queue.append((tree_list, console))
+                        files_paths, total_files = format_list_files_results(
+                            tool_message
+                        )
+                        parent_tree.add_leaf(id=tool_id, values=files_paths)
+
+                        self._output_queue.append(
+                            (parent_tree.get_tree(id=tool_id), console)
+                        )
 
                     # Tool: Read file
                     elif tool_name == "read_file":
@@ -665,8 +704,13 @@ class Agent:
                             continue
 
                         if tool_message.startswith("Error:"):
-                            tree_read.add(f"[#F76363]({tool_message})[/]")
-                            self._output_queue.append((tree_read, console))
+                            parent_tree.add_leaf(
+                                id=tool_id,
+                                values=[f"[#FC7C7C]({tool_message})[/]"],
+                            )
+                            self._output_queue.append(
+                                (parent_tree.get_tree(id=tool_id), console)
+                            )
                             continue
 
                         read_file_data = json.loads(tool_message)
@@ -674,61 +718,93 @@ class Agent:
                             read_file_data, truncate=True
                         )
 
-                        tree_read.add(
-                            Text(
-                                file_path,
-                                style=Style(
-                                    underline=False,
-                                    color=color_palette["light-purple"],
-                                ),
-                            )
+                        parent_tree.add_leaf(
+                            id=tool_id,
+                            values=[
+                                (
+                                    file_path,
+                                    Text(
+                                        file_path,
+                                        style=Style(
+                                            underline=False,
+                                            color=color_palette["light-purple"],
+                                        ),
+                                    ),
+                                )
+                            ],
                         )
-                        self._output_queue.append((tree_read, console))
+                        self._output_queue.append(
+                            (parent_tree.get_tree(id=tool_id), console)
+                        )
 
                     # Tool: Grep
                     elif tool_name == "grep":
                         if tool_message.startswith("Error:"):
-                            tree_grep.add("[#FC7C7C]Error: Not found[/]")
-                            self._output_queue.append((tree_grep, console))
+                            parent_tree.add_leaf(
+                                id=tool_id,
+                                values=["[#FC7C7C]Error: Not found[/]"],
+                            )
+                            self._output_queue.append(
+                                (parent_tree.get_tree(id=tool_id), console)
+                            )
                             continue
 
-                        grep_content_list = json.loads(tool_message)
-                        formatted_grep_results = format_grep_results(grep_content_list)
-
-                        sub_tree_grep = Tree(
-                            f"[#FA5CB3]Matches found ({len(formatted_grep_results)})[/]"
+                        formatted_grep_results = format_grep_results(tool_message)
+                        parent_tree.build_tree(
+                            id=sub_tree_grep_id,
+                            name="tree",
+                            data=f"[#FACC87][bold]Matches found({len(formatted_grep_results)})[/bold]",
                         )
-                        tree_grep.add(sub_tree_grep)
+                        parent_tree.add_leaf(
+                            id=tool_id,
+                            values=[parent_tree.get_tree(id=sub_tree_grep_id)],
+                        )
+
+                        leaf_values = []
                         for res in formatted_grep_results:
                             file_link = f"vscode://file/{res[0]}{res[1]}"
-                            sub_tree_grep.add(
-                                Text(
-                                    f"{res[0]}{res[1]}",
-                                    style=Style(
-                                        link=file_link,
-                                        underline=False,
-                                        color=color_palette["light-purple"],
+                            leaf_values.append(
+                                (
+                                    f"{res[0]}:{res[1]}",
+                                    Text(
+                                        f"{res[0]}{res[1]}",
+                                        style=Style(
+                                            link=file_link,
+                                            underline=False,
+                                            color=color_palette["light-purple"],
+                                        ),
                                     ),
                                 )
                             )
 
-                        self._output_queue.append((tree_grep, console))
+                        parent_tree.add_leaf(
+                            id=sub_tree_grep_id,
+                            values=leaf_values,
+                        )
+                        self._output_queue.append(
+                            (parent_tree.get_tree(id=tool_id), console)
+                        )
 
                     # Tool: Get Code Definition
                     elif tool_name == "get_code_block":
                         if tool_message.startswith("Error:"):
                             continue
 
-                        self._output_queue.append((tree_code_block, console))
-                        tree_code_block.add(
-                            Syntax(
-                                tool_message,
-                                "python",
-                                theme=code_block_md_theme,
-                                background_color="default",
-                            )
+                        parent_tree.add_leaf(
+                            id=tool_id,
+                            values=[
+                                Syntax(
+                                    tool_message,
+                                    "python",
+                                    theme=code_block_md_theme,
+                                    background_color="default",
+                                )
+                            ],
                         )
-                        self._output_queue.append((tree_code_block, console))
+
+                        self._output_queue.append(
+                            (parent_tree.get_tree(id=tool_id), console)
+                        )
 
                     # Tool: Write
                     elif tool_name == "write":
@@ -740,27 +816,44 @@ class Agent:
                         if tool_message.startswith("Error:"):
                             continue
 
-                        formatted_output = format_glob_results(tool_message)
-                        sub_tree_glob = Tree(
-                            f"[#FA5CB3]Pattern matched ({len(formatted_output)})[/]"
+                        formatted_glob_results = format_glob_results(tool_message)
+
+                        parent_tree.build_tree(
+                            id=sub_tree_glob_id,
+                            name="tree",
+                            data=f"[#FACC87][bold]Pattern matched ({len(formatted_glob_results)})[/bold]",
                         )
 
-                        tree_glob.add(sub_tree_glob)
+                        parent_tree.add_leaf(
+                            id=tool_id,
+                            values=[parent_tree.get_tree(id=sub_tree_glob_id)],
+                        )
+
                         root_dir = agent.agent_state.values.get("root_dir")
 
-                        for path in formatted_output:
-                            sub_tree_glob.add(
-                                Text(
+                        leaf_values = []
+                        for path in formatted_glob_results:
+                            leaf_values.append(
+                                (
                                     path,
-                                    style=Style(
-                                        link=f"vscode://file/{root_dir}/{path}:1",
-                                        underline=False,
-                                        color=color_palette["light-purple"],
+                                    Text(
+                                        path,
+                                        style=Style(
+                                            link=f"vscode://file/{root_dir}/{path}:1",
+                                            underline=False,
+                                            color=color_palette["light-purple"],
+                                        ),
                                     ),
                                 )
                             )
 
-                        self._output_queue.append((tree_glob, console))
+                        parent_tree.add_leaf(
+                            id=sub_tree_glob_id,
+                            values=leaf_values,
+                        )
+                        self._output_queue.append(
+                            (parent_tree.get_tree(id=tool_id), console)
+                        )
 
                 # Stream chunk type 3: Interrupt response
                 elif stream_message.get("__interrupt__"):

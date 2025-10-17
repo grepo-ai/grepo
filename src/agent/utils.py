@@ -169,10 +169,11 @@ def construct_code(read_file_data, truncate=False):
     return code_block + " ....", file_path
 
 
-def format_grep_results(results_list):
+def format_grep_results(grep_tool_results):
+    grep_tool_output = json.loads(grep_tool_results)
     formatted_res = []
 
-    for res in results_list:
+    for res in grep_tool_output:
         # slice_res = res[2][:10] if len(res[2]) > 10 else res[2]
         formatted_res.append((res[0], f":{res[1]}"))
     return formatted_res
@@ -185,3 +186,13 @@ def format_glob_results(path_list):
         return glob_tool_output
 
     return
+
+
+def format_list_files_results(path_list):
+    try:
+        list_tool_output = json.loads(path_list)
+    except json.JSONDecodeError:
+        return path_list, 0
+
+    if isinstance(list_tool_output, list):
+        return list_tool_output, len(list_tool_output)

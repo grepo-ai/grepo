@@ -135,7 +135,7 @@ def inject_user_prompt(user_guidelines, root_dir, programming_langs):
     - Provide actionable information
     - Structure responses logically with clear sections when needed
     - Use markdown formatting for better readability but generate minimal markdown for important parts of response only.
-    - Reference specific files and line numbers using the format: file_path:line_number
+    - Reference specific files and line numbers using the format: **file_path:line_number**
     - Do not generate file names or file paths wrapped in inline code just generate file names/paths as plain text
 
     ## Quality Assurance

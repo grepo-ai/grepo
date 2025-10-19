@@ -83,16 +83,16 @@ class Agent:
         self.state_schema: GlobalState = schema
         self.stream_mode: Optional[list[str]] = stream_mode
         self.checkpointer: SqliteSaver = checkpointer
-        self.session_uuid = session_uuid
+        self.session_uuid: str = session_uuid
         self._config: dict = config if config else self._get_config()
         self._compiled_graph: CompiledStateGraph = None
         self.auto_compact: bool = auto_compact
-        self._cycle_stats: dict = None
-        self._stop_thread = threading.Event()
-        self._last_message_id = (-1, None)
-        self._output_queue = output_queue
-        self._ui_renders = {}
-        self._active_auto_compaction = False
+        self._cycle_stats: dict = {}
+        self._stop_thread: threading.Event = threading.Event()
+        self._last_message_id: tuple = (-1, None)
+        self._output_queue: deque = output_queue
+        self._ui_renders: dict = {}
+        self._active_auto_compaction: bool = False
 
     def _get_system_prompt(self, root_dir, preprocessed_env_data):
         agents_md_path = f"{root_dir}/AGENTS.md"
@@ -152,7 +152,12 @@ class Agent:
     def stop_thread(self):
         self._stop_thread.set()
 
-    def get_messages(self):
+    def get_messages(self, llm_messages=False):
+        if llm_messages:
+            return self._compiled_graph.get_state(self._config).values.get(
+                "llm_input_messages", []
+            )
+
         return self._compiled_graph.get_state(self._config).values.get("messages", [])
 
     def update_state(self, **kwargs):
@@ -332,13 +337,11 @@ class Agent:
 
         return token_usage
 
-    def calculate_cycle_cost(self, all_messages=None, render=False):
+    def calculate_cycle_cost(self, render: bool = False):
         "This method calculates cost of 1 complete agent loop i.e from human message to AI's final response"
 
         llm_client = self.llm_client
-
-        if all_messages is None:
-            all_messages = self.get_messages()
+        all_messages = self.get_messages()
 
         cost_stats = {
             "total_input_tokens": 0,
@@ -416,6 +419,119 @@ class Agent:
             return f"[dim]{Text(renderable_cost_stats, (0, 0, 0, 1))}[/]"
 
         return cost_stats
+
+    def context_compaction(self):
+        llm_client = LLMInterface()
+
+        all_messages = self.get_messages()
+
+        # Calculate cost (in $) of session and context (%) used so far
+        cycle_cost = self.cycle_stats
+        if not cycle_cost:
+            return
+
+        session_context_size = (
+            cycle_cost["total_input_tokens"]
+            + cycle_cost["total_output_tokens"]
+            + cycle_cost["cache_creation_input_tokens"]
+            + cycle_cost["cache_read_input_tokens"]
+        )
+
+        # Run this until context frees up withing the acceptable context window range
+        if session_context_size > 10000 or float(
+            cycle_cost["context_window_used"][:-1]
+        ) >= float(f"{95:.2f}"):
+            # Render a UI indicator that context compaction is in process
+            self._active_auto_compaction = True
+
+            print("--- cycle costs BEFORE compaction ---")
+            print(cycle_cost)
+            print("------ Attempting Compaction -----")
+
+            # Compact only messages upto last AIMessage and leave remaining messages as it is in state
+            last_message = None
+            last_message_index = None
+            for index, msg in enumerate(reversed(all_messages)):
+                if isinstance(msg, AIMessage):
+                    last_message = msg
+                    last_message_index = index
+                    break
+
+            has_tool_calls = (
+                hasattr(last_message, "tool_calls")
+                and last_message.tool_calls
+                and len(last_message.tool_calls) > 0
+            )
+
+            if not last_message:
+                pass
+
+            elif last_message_index > 0:
+                remaining_messages = all_messages[-last_message_index:]
+                all_messages = all_messages[:-last_message_index]
+
+            elif last_message_index == 0:
+                remaining_messages = []
+
+            if last_message is not None and not has_tool_calls:
+                formatted_messages = self.format_state_messages(all_messages)
+                generated_summary = llm_client.generate_summary(
+                    "\n".join(formatted_messages)
+                )
+
+                rewrite_messages = [
+                    HumanMessage(content="Summary of the entire conversation."),
+                    generated_summary,
+                    *remaining_messages,
+                ]
+
+                # Rewrite the message history and update with a summary of previous messages + any HumanMessage
+                self.update_messages(
+                    messages=rewrite_messages,
+                    compact=True,
+                )
+
+                # Reset the last message index (TODO: Check Linear ticket GREP-56)
+                self._last_message_id = (-1, None)
+                print("------ Compaction Completed ------")
+
+                # update token usage stats after compaction
+                cost_stats = {
+                    "total_input_tokens": generated_summary.response_metadata["usage"][
+                        "input_tokens"
+                    ],
+                    "total_output_tokens": generated_summary.response_metadata["usage"][
+                        "output_tokens"
+                    ],
+                    "cost": 0,
+                    "context_window_used": 0,
+                }
+
+                cost_per_token = llm_client.cost_per_token
+
+                final_total_cost = (
+                    cost_stats["total_input_tokens"]
+                    * cost_per_token["input_token_cost"]
+                    + cost_stats["total_output_tokens"]
+                    * cost_per_token["output_token_cost"]
+                )
+
+                cost_stats["cost"] = f"${final_total_cost:.4f}"
+
+                # Calculate cost (in $) and context window (%) used for this cycle
+                total_tokens_used = (
+                    cost_stats["total_input_tokens"] + cost_stats["total_output_tokens"]
+                )
+
+                cost_stats["context_window_used"] = (
+                    f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
+                )
+
+                print("--- cycle costs AFTER compaction ---")
+                print(cost_stats)
+
+            # UI compaction indicator flag
+            self._active_auto_compaction = False
 
     def auto_compact_context(self):
         """
@@ -552,6 +668,19 @@ class Agent:
             )
             compaction_thread.start()
 
+    def custom_pre_model_hook(self):
+        def pre_model_hook(state):
+            self.context_compaction()
+            return {
+                "llm_input_messages": self.get_messages(),
+                "messages": [
+                    RemoveMessage(id=REMOVE_ALL_MESSAGES),
+                    *self.get_messages(),
+                ],
+            }
+
+        return pre_model_hook
+
     def _create(self):
         self._compiled_graph = create_react_agent(
             self.model_interface,
@@ -559,6 +688,7 @@ class Agent:
             state_schema=self.state_schema,
             checkpointer=self.checkpointer,
             prompt=self.system_prompt,
+            pre_model_hook=self.custom_pre_model_hook(),
         )
 
         # Run auto-compaction in background
@@ -582,7 +712,6 @@ class Agent:
         renderable_splits,
         human_input,
     ):
-        agent = self
         console = self._ui_renders["console"]
 
         messages = [HumanMessage(content=human_input)]
@@ -594,7 +723,7 @@ class Agent:
         while agent_cycle_active:
             renderable_splits.update_spinner(spin_it=True)
 
-            running_agent = agent.stream(
+            running_agent = self.stream(
                 input=input_type,
             )
             parent_tree = TreeRender()
@@ -658,7 +787,7 @@ class Agent:
                             if msg.get("thinking"):
                                 self._output_queue.append(
                                     (
-                                        f"[dim]Thinking -> {msg['thinking']}[/]\n",
+                                        f"\n[dim]Thinking -> {msg['thinking']}[/]\n",
                                         console,
                                     )
                                 )
@@ -666,16 +795,16 @@ class Agent:
                             elif msg.get("text"):
                                 if index == 0:
                                     self._output_queue.append(
-                                        (f"[#FCFCFC]●[/] {msg['text']}\n", console)
+                                        (f"\n[#FCFCFC]●[/] {msg['text']}\n", console)
                                     )
                                 else:
                                     self._output_queue.append(
-                                        (f"{msg['text']}\n", console)
+                                        (f"\n{msg['text']}\n", console)
                                     )
 
                     else:
                         markdown_text = Markdown(
-                            f"*●* {ai_messages_content}\n",
+                            f"\n*●* {ai_messages_content}\n",
                             code_theme=code_block_md_theme,
                         )
                         self._output_queue.append((markdown_text, console))
@@ -689,14 +818,24 @@ class Agent:
 
                     # Tool: List files
                     if tool_name == "list_files":
-                        files_paths, total_files = format_list_files_results(
-                            tool_message
-                        )
-                        parent_tree.add_leaf(id=tool_id, values=files_paths)
+                        if "Error: ValueError" in tool_message:
+                            parent_tree.add_leaf(
+                                id=tool_id, values="[#FC7C7C]No files found[/]"
+                            )
 
-                        self._output_queue.append(
-                            (parent_tree.get_tree(id=tool_id), console)
-                        )
+                            self._output_queue.append(
+                                (parent_tree.get_tree(id=tool_id), console)
+                            )
+
+                        else:
+                            files_paths, total_files = format_list_files_results(
+                                tool_message
+                            )
+                            parent_tree.add_leaf(id=tool_id, values=files_paths)
+
+                            self._output_queue.append(
+                                (parent_tree.get_tree(id=tool_id), console)
+                            )
 
                     # Tool: Read file
                     elif tool_name == "read_file":
@@ -829,7 +968,7 @@ class Agent:
                             values=[parent_tree.get_tree(id=sub_tree_glob_id)],
                         )
 
-                        root_dir = agent.agent_state.values.get("root_dir")
+                        root_dir = self.agent_state.values.get("root_dir")
 
                         leaf_values = []
                         for path in formatted_glob_results:
@@ -873,7 +1012,7 @@ class Agent:
 
             # After the stream completes, check if we should continue the agent loop
             # The stream exhaustion means one complete react cycle has finished
-            all_messages = agent.get_messages()
+            all_messages = self.get_messages()
 
             if not all_messages:
                 # No messages at all - should not happen, terminate
@@ -912,9 +1051,9 @@ class Agent:
                 agent_cycle_active = True
 
         renderable_splits.update_spinner(
-            spin_it=False, data=agent.calculate_cycle_cost(render=True)
+            spin_it=False, data=self.calculate_cycle_cost(render=True)
         )
-        renderable_splits.renderable_data = agent.session_cost()
+        renderable_splits.renderable_data = self.session_cost()
 
 
 def initiate_agent(
@@ -934,7 +1073,7 @@ def initiate_agent(
         schema=GlobalState,
         checkpointer=get_checkpointer(),
         stream_mode="updates",
-        auto_compact=True,
+        auto_compact=False,
         output_queue=output_queue,
         session_uuid=session_uuid,
         preprocessed_env_data=preprocessed_data,

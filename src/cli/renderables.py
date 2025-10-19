@@ -350,28 +350,38 @@ class TreeRender:
         if id in self.node_map:
             return self.node_map.get(id)[1]
 
-    def add_leaf(self, id: str, values: list):
+    def add_leaf(self, id: str, values: list | str):
         if id not in self.node_map:
             raise ValueError("Tree does not exist")
 
-        for val in values:
-            if isinstance(val, tuple):
-                if val[0] in self.node_map[id][1]:
-                    continue
+        if isinstance(values, str):
+            if values in self.node_map[id][1]:
+                return
 
-                # Add to Tree object
-                self.node_map[id][0].add(val[1])
-                # Add to set
-                self.node_map[id][1].add(val[0])
+            # Add to Tree object
+            self.node_map[id][0].add(values)
+            # Add to set
+            self.node_map[id][1].add(values)
 
-            else:
-                if val in self.node_map[id][1]:
-                    continue
+        else:
+            for val in values:
+                if isinstance(val, tuple):
+                    if val[0] in self.node_map[id][1]:
+                        continue
 
-                # Add to Tree object
-                self.node_map[id][0].add(val)
-                # Add to set
-                self.node_map[id][1].add(val)
+                    # Add to Tree object
+                    self.node_map[id][0].add(val[1])
+                    # Add to set
+                    self.node_map[id][1].add(val[0])
+
+                else:
+                    if val in self.node_map[id][1]:
+                        continue
+
+                    # Add to Tree object
+                    self.node_map[id][0].add(val)
+                    # Add to set
+                    self.node_map[id][1].add(val)
 
 
 if __name__ == "__main__":

@@ -804,7 +804,7 @@ class Agent:
 
                     else:
                         markdown_text = Markdown(
-                            f"\n*●* {ai_messages_content}\n",
+                            f"`●` {ai_messages_content}\n",
                             code_theme=code_block_md_theme,
                         )
                         self._output_queue.append((markdown_text, console))

@@ -53,9 +53,9 @@ from agent.utils import (
     format_glob_results,
     format_list_files_results,
 )
-from src.cli.utils import code_block_md_theme, color_palette
-from src.code_parser import language_map
-from src.cli.renderables import TreeRender
+from cli.utils import code_block_md_theme, color_palette
+from code_parser import language_map
+from cli.renderables import TreeRender
 
 
 class Agent:
@@ -1071,7 +1071,7 @@ def initiate_agent(
         provider=model_provider,
         tools=[list_files, read_file, grep, edit_file, get_code_block, glob, write],
         schema=GlobalState,
-        checkpointer=get_checkpointer(),
+        checkpointer=get_checkpointer(root_dir),
         stream_mode="updates",
         auto_compact=False,
         output_queue=output_queue,

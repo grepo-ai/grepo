@@ -1,5 +1,4 @@
 import os
-import sys
 import threading
 from queue import SimpleQueue
 from rich.console import Console
@@ -7,25 +6,32 @@ from rich.live import Live
 from collections import deque
 
 
-from src.agent.utils import generate_session_uuid, preprocess_dir
-from src.cli.commands import Commands
-from src.cli.terminal import GetchRaw, read_keystroke
-from src.cli.processing import bg_query_processing, bg_query_logs_processing
-from src.cli.renderables import render_intro, RenderSplits
-from src.cli.utils import grepo_md_theme
-from src.agent.state import GlobalState
+from agent.utils import generate_session_uuid, preprocess_dir
+from cli.commands import Commands
+from cli.terminal import GetchRaw, read_keystroke
+from cli.renderables import render_intro, RenderSplits
+from cli.utils import grepo_md_theme, get_env_vars
+from cli.threads import initiate_threads
+
+import click
 
 
-# --- Intial screen setup ---
-console = Console(highlight=False, theme=grepo_md_theme)
+@click.command()
+def _main():
+    # Get root dir of the codebase
+    root_dir = os.getcwd()
 
+    # Get API keys of LLMs from env variables
+    env_vars = get_env_vars()
 
-if __name__ == "__main__":
+    # Create .grepo dir at root
+    os.makedirs(f"{root_dir}/.grepo", exist_ok=True)
+
+    # --- Intial screen setup ---
+    console = Console(highlight=False, theme=grepo_md_theme)
+
     # Welcome screen and (add intial model/api-key settings via arrow keys and toggle -> TODO)
     render_intro(console)
-
-    # Get root dir to read AGENTS.md file
-    root_dir = os.getcwd()
 
     # Run pre-processing to get information like programming languages used in codebase etc.
     preprocessed_data = preprocess_dir(root_dir)
@@ -41,7 +47,7 @@ if __name__ == "__main__":
     buffer = ""
 
     # Create split regions for query processing and input bar
-    split_screens = RenderSplits(output_queue=output_queue, lock=lock)
+    split_screens = RenderSplits(output_queue=output_queue, lock=lock, console=console)
 
     thread_kwargs = {
         "query_queue": query_queue,
@@ -50,34 +56,42 @@ if __name__ == "__main__":
         "stop_event": stop_event,
     }
 
-    # Thread for processing input queries
-    input_processing_thread = threading.Thread(
-        target=bg_query_processing,
-        args=(
-            root_dir,
-            buffer,
-            console,
-            split_screens,
-            session_uuid,
-            preprocessed_data,
-        ),
-        kwargs=thread_kwargs,
-        daemon=True,
+    # Initiate background processing threads
+    input_processing_thread, logs_processing_thread = initiate_threads(
+        root_dir,
+        buffer,
+        console,
+        split_screens,
+        session_uuid,
+        preprocessed_data,
+        **thread_kwargs,
     )
 
-    input_processing_thread.start()
+    # # Thread for processing input queries
+    # input_processing_thread = threading.Thread(
+    #     target=bg_query_processing,
+    #     args=(
+    #         root_dir,
+    #         buffer,
+    #         console,
+    #         split_screens,
+    #         session_uuid,
+    #         preprocessed_data,
+    #     ),
+    #     kwargs=thread_kwargs,
+    #     daemon=True,
+    # )
 
-    # Thread to process queries in-process logs
-    logs_processing_thread = threading.Thread(
-        target=bg_query_logs_processing,
-        args=(
-            split_screens,
-            console,
-        ),
-        kwargs={"output_queue": output_queue, "stop_event": stop_event},
-        daemon=True,
-    )
-    logs_processing_thread.start()
+    # # Thread for processing query logs
+    # logs_processing_thread = threading.Thread(
+    #     target=bg_query_logs_processing,
+    #     args=(
+    #         split_screens,
+    #         console,
+    #     ),
+    #     kwargs={"output_queue": output_queue, "stop_event": stop_event},
+    #     daemon=True,
+    # )
 
     live_region = Live(
         split_screens,
@@ -89,6 +103,17 @@ if __name__ == "__main__":
     try:
         live_region.start()
 
+        # Render screen for model selection and entering API keys
+        with GetchRaw():
+            Commands(console=console, rendered_regions=split_screens).show(
+                render_region="lower"
+            )
+            split_screens.update_lower_split(main=True)
+
+        # Start background threads
+        input_processing_thread.start()
+        logs_processing_thread.start()
+
         while True:
             with GetchRaw():
                 try:
@@ -98,6 +123,7 @@ if __name__ == "__main__":
                         if not char:
                             continue
 
+                        # Toggle `thinking` mode if available
                         if char == "\t":
                             query_queue.put(char)
                             continue
@@ -125,7 +151,7 @@ if __name__ == "__main__":
 
                         # Just update the respective rendearble sections Rich picks up the diff and updates renderables
                         # Also we are already auto-refreshing the live region so we dont need to explicitly to call live.update()
-                        split_screens.update_lower_split(console, buffer)
+                        split_screens.update_lower_split(buffer=buffer)
 
                         # Show commands palette and switch live region flow
                         if char == "/" and len(buffer) == 1:
@@ -133,23 +159,26 @@ if __name__ == "__main__":
                             split_screens.update_footer_split(list_all_commands=True)
                             selected_command = Commands(
                                 console=console, rendered_regions=split_screens
-                            ).show()
+                            ).show(render_region="footer")
 
                             buffer += selected_command
-                            split_screens.update_lower_split(console, buffer)
+                            split_screens.update_lower_split(buffer=buffer)
                             split_screens.update_footer_split(blank=True)
                             split_screens._commands_palette_active = False
 
                 # Ctrl-C keystroke
                 except KeyboardInterrupt:
                     split_screens.update_footer_split(exit_screen=True)
-                    split_screens.update_lower_split(console, "")
+                    split_screens.update_lower_split(buffer="")
                     stop_event.set()
                     break
 
             # Reset and clear buffer on `Enter` keystroke i.e submission of query
             buffer = ""
             split_screens.update_lower_split(console, buffer, is_first_time=False)
+
+    except KeyboardInterrupt:
+        pass
 
     finally:
         live_region.stop()

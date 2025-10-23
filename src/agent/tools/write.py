@@ -10,7 +10,7 @@ from langchain_core.tools import tool, InjectedToolCallId
 from langchain_core.messages import ToolMessage
 from langgraph.prebuilt import InjectedState
 
-from src.agent.state import GlobalState
+from agent.state import GlobalState
 from langgraph.types import Command, interrupt
 from agent.utils import apply_diff, generate_diff
 

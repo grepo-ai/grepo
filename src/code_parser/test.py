@@ -3,7 +3,7 @@
 from tree_sitter import Language, Parser
 import tree_sitter_python as tspython
 from pprint import pprint
-from src.code_parser import CodeWalker, ParserLanguages
+from .code_parser import CodeWalker, ParserLanguages
 
 
 code = """

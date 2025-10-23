@@ -9,7 +9,7 @@ import tree_sitter_python as tspython
 import tree_sitter_javascript as tsjavascript
 
 
-from src.code_parser.queries import CODE_SYMBOLS_QUERY_MAP
+from code_parser.queries import CODE_SYMBOLS_QUERY_MAP
 
 
 language_map = {"py": "PYTHON", "js": "JAVASCRIPT", "ts": "TYPESCRIPT"}

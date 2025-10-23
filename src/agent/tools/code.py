@@ -11,8 +11,8 @@ from langgraph.prebuilt import InjectedState
 from langgraph.types import Command, interrupt
 
 
-from src.agent.state import GlobalState
-from src.code_parser import CodeWalker, ParserLanguages, language_map
+from agent.state import GlobalState
+from code_parser import CodeWalker, ParserLanguages, language_map
 
 
 CODE_BLOCK_TOOL_DESCRIPTION = """

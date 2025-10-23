@@ -1,3 +1,4 @@
+import os
 from rich.theme import Theme
 
 
@@ -44,3 +45,7 @@ grepo_md_theme = Theme(
 
 
 code_block_md_theme = "github-dark"
+
+
+def get_env_vars():
+    return os.environ

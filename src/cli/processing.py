@@ -3,7 +3,7 @@ import queue
 import threading
 from rich.text import Text
 from rich.padding import Padding
-from src.agent.main import initiate_agent
+from agent.main import initiate_agent
 
 
 def bg_query_processing(

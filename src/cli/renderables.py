@@ -14,8 +14,8 @@ from rich.spinner import Spinner
 from rich.padding import Padding
 from rich.table import Table
 from rich.tree import Tree
-from src.cli.commands import Commands
-from src.cli.utils import color_palette
+from cli.commands import Commands
+from cli.utils import color_palette
 
 
 # Custom box with no left/right borders (only top and bottom horizontal lines)
@@ -34,7 +34,7 @@ NO_SIDE_BORDER_BOX = Box(
 def render_intro(console):
     console.print("\n\n")
     text = Text()
-    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#8FF4FF")
+    text.append(pyfiglet.figlet_format("grepo", font="ansi_shadow"), style="#8FF4FF")
     console.print(text)
 
     console.print(f"[{color_palette.get('intro-text-pink')}] cwd: {os.getcwd()}[/]\n")
@@ -44,33 +44,6 @@ def render_intro(console):
     console.print(
         Padding(Text("─" * 40, style=color_palette.get("cyan")), (0, 0, 0, 1))
     )
-
-
-def input_render_styles(buffer=None, is_first_time=True, render_alert=None):
-    # Render any alerts
-    if render_alert:
-        renderable_text = f"[#FF6969]> {render_alert}[/]"
-        border_style = "#FF6969"
-
-    # Empty buffer shows placeholder text
-    elif not buffer and is_first_time:
-        renderable_text = (
-            '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]'
-        )
-        border_style = "#69FFB4"
-
-    # Bash command buffer style
-    elif buffer and buffer[0] == "#":
-        buffer = buffer[1:]
-        renderable_text = f"[#FFD66E]# {buffer}_[/]"
-        border_style = "#FFD66E"
-
-    # Default input bar style
-    else:
-        renderable_text = f"[#69FFB4]> {buffer}_[/]"
-        border_style = "#69FFB4"
-
-    return renderable_text, border_style
 
 
 # Deprecated: (only kept for reference)
@@ -101,40 +74,25 @@ class AgentLogs:
 
 
 class RenderSplits:
-    def __init__(self, output_queue, lock):
+    def __init__(self, output_queue, lock, console):
         # self.blank_box = Box("    \n" * 8, ascii=True)
         self.lock = lock
-        self._previous_buffer = ""
         self.output_queue = output_queue
         self._log_history = ""
         self._renderable_data = self._default_stats()
-        self.console = Console()
+        self.console = console
         self._thinking = False
         self._compaction = False
         self._commands_palette_active = False
-        # self._agent_logs = AgentLogs()  # Deprecated
-
-        # self._upper_split_panel = Panel(
-        #     self._agent_logs,
-        #     box=SIMPLE,
-        # )
-
-        self._lower_split_panel = Panel(
-            '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]',
-            box=NO_SIDE_BORDER_BOX,
-            border_style="#545454",
-            height=3,
-            padding=(0, 1, 0, 1),
-        )
-
+        self._lower_split_panel = self._lower_panel(init=True)
         self.spinner = Panel(
             "[#969696]* Tip: Add AGENTS.md file in root dir of your project with your custom instructions, style guide or project architecture details.[/]",
             box=SIMPLE,
             height=0,
             padding=(0, 1, 0, 1),
         )
-
         self._footer_split_panel = self._footer_panel(init=True)
+        # self._agent_logs = AgentLogs()  # Deprecated
 
     def _default_stats(self):
         stats_dict = {
@@ -182,8 +140,8 @@ class RenderSplits:
                     f"{left_text}",
                     Spinner(
                         "dots3",
-                        text="[#FCE2B3]compacting context[/]",
-                        style="#FCE2B3",
+                        text="[#BDFF99]compacting context[/]",
+                        style="#BDFF99",
                     ),
                     f"{right_text}",
                 )
@@ -204,6 +162,50 @@ class RenderSplits:
 
             return panel
 
+    def _lower_panel(self, main=False, init=False, render=True, **kwargs):
+        # Main screen
+        if main:
+            panel = Panel(
+                '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]',
+                box=NO_SIDE_BORDER_BOX,
+                border_style="#545454",
+                height=3,
+                padding=(0, 1, 0, 1),
+            )
+
+            return panel
+
+        # Initial LLM selection and API input screen
+        elif init:
+            list_commands = Commands.init_commands_selector()
+            panel = Panel(
+                list_commands,
+                box=SIMPLE,
+                height=8,
+                padding=(0, 1, 0, 1),
+            )
+
+            return panel
+
+        elif render:
+            if kwargs.get("dynamic_selection", None) is not None:
+                renderable_text = Commands.init_commands_selector(
+                    dynamic_selection=kwargs.get("dynamic_selection")
+                )
+
+                height = 8
+                border_style = None
+
+            else:
+                renderable_text, border_style = Commands.input_render_styles(
+                    kwargs.get("buffer"),
+                    kwargs.get("is_first_time"),
+                    kwargs.get("render_alert"),
+                )
+                height = 3
+
+            return renderable_text, border_style, height
+
     @property
     def renderable_data(self):
         return self._renderable_data
@@ -212,22 +214,22 @@ class RenderSplits:
     def renderable_data(self, data_dict):
         self._renderable_data = data_dict
 
-    # def update_upper_split(self, renderable_data=None, **kwargs):
-    #     if renderable_data:
-    #         self._upper_split_panel.renderable = renderable_data
-
     def update_lower_split(
-        self, console, buffer, is_first_time=True, render_alert=False
+        self,
+        main=False,
+        render=True,
+        **kwargs,
     ):
-        renderable_text, border_style = input_render_styles(
-            buffer, is_first_time, render_alert
-        )
+        if main:
+            self._lower_split_panel = self._lower_panel(main=True)
 
-        self._lower_split_panel.renderable = renderable_text
-        self._lower_split_panel.border_style = border_style
+        elif render:
+            renderable_text, border_style, height = self._lower_panel(**kwargs)
 
-        # This is to prevent frequent updates when buffer didnt even change
-        self._previous_buffer = buffer
+            self._lower_split_panel.renderable = renderable_text
+            if border_style is not None:
+                self._lower_split_panel.border_style = border_style
+            self._lower_split_panel.height = height
 
     def update_spinner(
         self,

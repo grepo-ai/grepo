@@ -1,4 +1,5 @@
 import threading
+import traceback
 from cli.processing import bg_query_processing, bg_query_logs_processing
 
 

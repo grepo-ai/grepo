@@ -9,7 +9,7 @@ from rich.console import Console, ConsoleOptions, Group, RenderResult
 from rich.text import Text
 from rich.panel import Panel
 from rich.box import Box
-from rich.box import SIMPLE
+from rich.box import SIMPLE, ASCII, ASCII2
 from rich.spinner import Spinner
 from rich.padding import Padding
 from rich.table import Table
@@ -84,7 +84,7 @@ class RenderSplits:
         self._thinking = False
         self._compaction = False
         self._commands_palette_active = False
-        self._lower_split_panel = self._lower_panel(init=True)
+        self._lower_split_panel = self._lower_panel(init=True, screen_type="init")
         self.spinner = Panel(
             "[#969696]* Tip: Add AGENTS.md file in root dir of your project with your custom instructions, style guide or project architecture details.[/]",
             box=SIMPLE,
@@ -140,8 +140,8 @@ class RenderSplits:
                     f"{left_text}",
                     Spinner(
                         "dots3",
-                        text="[#BDFF99]compacting context[/]",
-                        style="#BDFF99",
+                        text="[#B6CBFA]compacting context[/]",
+                        style="#B6CBFA",
                     ),
                     f"{right_text}",
                 )
@@ -162,7 +162,9 @@ class RenderSplits:
 
             return panel
 
-    def _lower_panel(self, main=False, init=False, render=True, **kwargs):
+    def _lower_panel(
+        self, main=False, init=False, render=True, screen_type=None, **kwargs
+    ):
         # Main screen
         if main:
             panel = Panel(
@@ -176,13 +178,14 @@ class RenderSplits:
             return panel
 
         # Initial LLM selection and API input screen
-        elif init:
-            list_commands = Commands.init_commands_selector()
+        elif init and screen_type == "init":
+            renderable_text = Commands.init_commands_selector(screen_type=screen_type)
             panel = Panel(
-                list_commands,
-                box=SIMPLE,
+                renderable_text,
+                box=ASCII2,
                 height=8,
-                padding=(0, 1, 0, 1),
+                width=100,
+                padding=(1, 1, 0, 1),
             )
 
             return panel
@@ -190,9 +193,17 @@ class RenderSplits:
         elif render:
             if kwargs.get("dynamic_selection", None) is not None:
                 renderable_text = Commands.init_commands_selector(
-                    dynamic_selection=kwargs.get("dynamic_selection")
+                    dynamic_selection=kwargs.get("dynamic_selection"),
+                    screen_type=screen_type,
                 )
 
+                height = 8
+                border_style = None
+
+            elif kwargs.get("recursive_render"):
+                renderable_text = Commands.init_commands_selector(
+                    screen_type=screen_type
+                )
                 height = 8
                 border_style = None
 
@@ -218,13 +229,18 @@ class RenderSplits:
         self,
         main=False,
         render=True,
+        screen_type=None,
         **kwargs,
     ):
         if main:
-            self._lower_split_panel = self._lower_panel(main=True)
+            self._lower_split_panel = self._lower_panel(
+                main=True, screen_type=screen_type
+            )
 
         elif render:
-            renderable_text, border_style, height = self._lower_panel(**kwargs)
+            renderable_text, border_style, height = self._lower_panel(
+                screen_type=screen_type, **kwargs
+            )
 
             self._lower_split_panel.renderable = renderable_text
             if border_style is not None:
@@ -244,7 +260,7 @@ class RenderSplits:
 
         if spin_it:
             self.spinner.renderable = Spinner(
-                "dots", text=f"[#FC814C]{status_text}[/]", style="#FC814C"
+                "dots", text=f"[#69FFB4]{status_text}[/]", style="#69FFB4"
             )
 
         elif not spin_it and data is not None:
@@ -330,7 +346,7 @@ class TreeRender:
 
     def build_tree(self, id, name, data=None):
         tree_map = {
-            "grep": Tree("[#FC69FF]● [/][#7AFF85][bold]Search[/bold][/]"),
+            "grep": Tree(f"[#FC69FF]● [/][#7AFF85][bold]Search[/bold][/] ({data})"),
             "list": Tree(f"[#FC69FF]● [/][#7AFF85][bold]List[/bold][/] ({data})"),
             "read": Tree("[#FC69FF]● [/][#7AFF85][bold]Read[/bold][/]"),
             "write": Tree(f"[#FC69FF]● [/][#7AFF85]Write[/] ({data})"),

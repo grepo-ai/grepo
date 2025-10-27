@@ -59,6 +59,7 @@ def inject_user_prompt(user_guidelines, root_dir, programming_langs):
     - Before editing or writing code, read existing files to understand patterns and conventions
     - Use grep to find all usages of functions/classes before making breaking changes
     - Verify file and directory existence before performing write operations
+    - Always generate some search patterns that will help grep tool return exact matches as this helps in finding context
     - Chain tools logically: search → code search -> read → understand → edit/write
     - Only use project's root directory {root_dir} as the starting point for everything dont use any directories outside root directory
     - Only read important files when you have to choose which file to read for context

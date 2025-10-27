@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import time
 import uuid
@@ -742,10 +743,15 @@ class Agent:
                     ):
                         for tool_call in ai_message.tool_calls:
                             if tool_call.get("name") == "list_files":
+                                render_data = re.sub(
+                                    r"\\([^\w\s])",
+                                    r"\1",
+                                    tool_call.get("args", {}).get("dir_path"),
+                                )
                                 parent_tree.build_tree(
                                     id=tool_call.get("id"),
                                     name="list",
-                                    data=tool_call.get("args", {}).get("dir_path"),
+                                    data=render_data,
                                 )
 
                             elif tool_call.get("name") == "read_file":
@@ -755,31 +761,51 @@ class Agent:
                                 )
 
                             elif tool_call.get("name") == "glob":
+                                render_data = re.sub(
+                                    r"\\([^\w\s])",
+                                    r"\1",
+                                    tool_call.get("args", {}).get("pattern"),
+                                )
                                 parent_tree.build_tree(
                                     id=tool_call.get("id"),
                                     name="glob",
-                                    data=tool_call.get("args", {}).get("pattern"),
+                                    data=render_data,
                                 )
 
                             elif tool_call.get("name") == "grep":
+                                render_data = re.sub(
+                                    r"\\([^\w\s])",
+                                    r"\1",
+                                    tool_call.get("args", {}).get("pattern"),
+                                )
                                 parent_tree.build_tree(
                                     id=tool_call.get("id"),
                                     name="grep",
-                                    data=tool_call.get("args", {}).get("query"),
+                                    data=render_data,
                                 )
 
                             elif tool_call.get("name") == "get_code_block":
+                                render_data = re.sub(
+                                    r"\\([^\w\s])",
+                                    r"\1",
+                                    tool_call.get("args", {}).get("file_path"),
+                                )
                                 parent_tree.build_tree(
                                     id=tool_call.get("id"),
                                     name="code_search",
-                                    data=tool_call.get("args", {}).get("file_path"),
+                                    data=render_data,
                                 )
 
                             elif tool_call.get("name") == "write":
+                                render_data = re.sub(
+                                    r"\\([^\w\s])",
+                                    r"\1",
+                                    tool_call.get("args", {}).get("pathname"),
+                                )
                                 parent_tree.build_tree(
                                     id=tool_call.get("id"),
                                     name="write",
-                                    data=tool_call.get("args", {}).get("pathname"),
+                                    data=render_data,
                                 )
 
                     if isinstance(ai_messages_content, list):

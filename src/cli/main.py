@@ -67,32 +67,6 @@ def _main():
         **thread_kwargs,
     )
 
-    # # Thread for processing input queries
-    # input_processing_thread = threading.Thread(
-    #     target=bg_query_processing,
-    #     args=(
-    #         root_dir,
-    #         buffer,
-    #         console,
-    #         split_screens,
-    #         session_uuid,
-    #         preprocessed_data,
-    #     ),
-    #     kwargs=thread_kwargs,
-    #     daemon=True,
-    # )
-
-    # # Thread for processing query logs
-    # logs_processing_thread = threading.Thread(
-    #     target=bg_query_logs_processing,
-    #     args=(
-    #         split_screens,
-    #         console,
-    #     ),
-    #     kwargs={"output_queue": output_queue, "stop_event": stop_event},
-    #     daemon=True,
-    # )
-
     live_region = Live(
         split_screens,
         refresh_per_second=60,
@@ -106,7 +80,7 @@ def _main():
         # Render screen for model selection and entering API keys
         with GetchRaw():
             Commands(console=console, rendered_regions=split_screens).show(
-                render_region="lower"
+                render_region="lower", screen_type="init"
             )
             split_screens.update_lower_split(main=True)
 
@@ -128,9 +102,13 @@ def _main():
                             query_queue.put(char)
                             continue
 
-                        # Ignore arrow keys and TODO add other non-printable sequences
-                        # that might not need processing
-                        if len(char) > 1 or char.startswith("\x1b"):
+                        # Handle paste event (both regular multi-char and bracketed paste)
+                        if len(char) > 1 and not char.startswith("\x1b"):
+                            buffer += char
+                            split_screens.update_lower_split(buffer=buffer)
+                            break
+
+                        elif char.startswith("\x1b"):
                             continue
 
                         # --- Process user's query on `Enter` keystroke ---
@@ -143,11 +121,11 @@ def _main():
 
                         # --- TODO: Improve how buffer addition is handled and edge cases better (works for now but improve ---
                         # Handle repeated `Enter` keystrokes
+                        elif not buffer and char == "\n":
+                            continue
+
                         else:
-                            if not buffer and char == "\n":
-                                continue
-                            else:
-                                buffer += char
+                            buffer += char
 
                         # Just update the respective rendearble sections Rich picks up the diff and updates renderables
                         # Also we are already auto-refreshing the live region so we dont need to explicitly to call live.update()

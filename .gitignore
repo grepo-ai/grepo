@@ -214,3 +214,4 @@ grepo.db-wal
 # Grepo internal test files
 test.js
 .grepo/
+grepo.egg-info

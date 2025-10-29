@@ -10,7 +10,7 @@ color_palette = {
     "light-pink": "#F47AFF",
     "purple": "#4A4EFF",
     "orange": "#F27F4E",
-    "grepo_logo": "#8FF4FF",
+    "grepo_logo": "#60FCF5",
     "intro-text-pink": "#FC69FF",
     "light-purple": "#B6C8FA",
     "white": "#FCFCFC",

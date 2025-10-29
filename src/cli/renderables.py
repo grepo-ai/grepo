@@ -33,16 +33,18 @@ NO_SIDE_BORDER_BOX = Box(
 
 def render_intro(console):
     console.print("\n\n")
+    # Grepo logo
     text = Text()
-    text.append(pyfiglet.figlet_format("grepo", font="ansi_shadow"), style="#8FF4FF")
-    console.print(text)
+    text.append(pyfiglet.figlet_format("grepo", font="ansi_shadow"))
 
-    console.print(f"[{color_palette.get('intro-text-pink')}] cwd: {os.getcwd()}[/]\n")
+    # Root directory and help or / commands info
+    init_lines = f"[#60FCF5]{text}[/]\n[{color_palette.get('intro-text-pink')}] cwd: {os.getcwd()}\n\n[italic] /help for help, / for list of commands[/]\n[#60FCF5] {'─' * 39}[/]"
     console.print(
-        f"[{color_palette.get('intro-text-pink')}][italic] /help for help[/italic],[italic] / for list of commands[/]"
-    )
-    console.print(
-        Padding(Text("─" * 40, style=color_palette.get("cyan")), (0, 0, 0, 1))
+        Panel(
+            init_lines,
+            box=SIMPLE,
+            padding=(0, 0, 0, 1),
+        )
     )
 
 

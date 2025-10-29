@@ -9,9 +9,8 @@ from rich.console import Console, ConsoleOptions, Group, RenderResult
 from rich.text import Text
 from rich.panel import Panel
 from rich.box import Box
-from rich.box import SIMPLE, ASCII, ASCII2
+from rich.box import SIMPLE, ASCII2
 from rich.spinner import Spinner
-from rich.padding import Padding
 from rich.table import Table
 from rich.tree import Tree
 from cli.commands import Commands

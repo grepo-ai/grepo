@@ -58,14 +58,27 @@ def get_env_vars():
     return dict(os.environ)
 
 
-def check_models_api_key(env_vars: dict, settings_json: dict):
+def check_models_api_key(env_vars: dict, settings_json: dict, root_dir: str):
     api_keys = []
-    for key, val in env_vars.items():
-        if key in ProviderMappingAPI.__members__ and val.strip() is not None:
-            api_keys.append({key: val})
-            if settings_json:
-                settings_json.update({key: val})
+    settings_changed = False
 
+    # Check settings.json to see if we already saved any API key from previous session runs
+    if settings_json:
+        for key, val in settings_json.items():
+            if key in ProviderMappingAPI.__members__:
+                api_keys.append({key: val})
+
+    # Now check current env vars for any API key for the models supported
+    for key, val in env_vars.items():
+        if key in ProviderMappingAPI.__members__ and val.strip():
+            if key not in api_keys:
+                api_keys.append({key: val})
+                settings_json.update({key: val})
+                settings_changed = True
+
+    # Update the settings file with model API keys that are present in current env and also supported by Grepo
+    if settings_changed:
+        update_settings(root_dir, data=settings_json)
     return api_keys
 
 
@@ -78,8 +91,7 @@ def update_env_var_api_keys(
 
         # Update env vars
         os.environ[key] = model_key_mapping[key]
-        if settings_json:
-            settings_json.update({key: model_key_mapping[key]})
+        settings_json.update({key: model_key_mapping[key]})
 
     # Write to settings.json with data
     if model_api_keys:
@@ -88,7 +100,7 @@ def update_env_var_api_keys(
         if old_settings != settings_json:
             with open(file_path, "w") as file:
                 json.dump(
-                    file, settings_json, indent=2, ensure_ascii=False, sort_keys=True
+                    settings_json, file, indent=2, ensure_ascii=False, sort_keys=True
                 )
 
 
@@ -98,10 +110,25 @@ def get_or_create_settings(root_dir: str):
 
     if settings_file.exists():
         # Read settings.json file
-        with open(settings_file, "r") as file:
-            settings_json_dump = json.load(file)
-            return settings_json_dump
+        try:
+            with open(settings_file, "r") as file:
+                settings_json_dump = json.load(file)
+                return settings_json_dump
+
+        except json.JSONDecodeError:
+            # TODO: File could be empty or has faulty JSON need to check that precisely and handle
+            return {}
+
     else:
         # Create a settings.json file
         settings_file.touch()
         return {}
+
+
+def update_settings(root_dir: str, data: dict):
+    # Read settings.json file in .grepo dir else create it
+    settings_file = Path(f"{root_dir}/.grepo/settings.json")
+
+    # TODO: Make sure to first check existing settings and merge with new incoming settings
+    with settings_file.open("w", encoding="utf-8") as file:
+        json.dump(data, file, indent=2, ensure_ascii=False, sort_keys=True)

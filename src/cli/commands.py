@@ -109,7 +109,7 @@ class Commands:
                         ]
                         selected_command = list(selected_command.keys())[0]
 
-                    # Eventually add more input based commands that will require similar flow
+                    # --- Eventually add more input based commands that will require similar flow ---
                     elif screen_type in ["Select AI model"]:
                         # Selected model name from the list of available models
                         selected_model = self.__class__.INIT_SCREEN_COMMANDS[index][
@@ -134,12 +134,13 @@ class Commands:
                                 continue
 
                             # Handle ESC key to cancel
-                            if char == "\x1b":
+                            elif char == "\x1b":
                                 self._buffer = ""
                                 return ""
 
                             # char could be single char or paste event
-                            if len(char) > 1 and not char.startswith("\x1b"):
+                            elif len(char) > 1 and not char.startswith("\x1b"):
+                                print("#####")
                                 self._buffer += char
                                 self.rendered_commands_region.update_lower_split(
                                     buffer=self._buffer, is_first_time=False
@@ -203,8 +204,9 @@ class Commands:
             if char not in ("\x1b[B", "\x1b[A", "\x1b[C", "\x1b[D", "\x7f", "\n"):
                 # These two keys are for exiting commands screens (footer and lower ones)
                 if char in ["q", "\t"]:
-                    return self.__class__._api_keys
-                return self.__class__._api_keys
+                    return ""
+
+                return
 
     @staticmethod
     def main_commands_selector(dynamic_selection=None):

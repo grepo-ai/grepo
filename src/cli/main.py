@@ -87,8 +87,9 @@ def _main():
         live_region.start()
 
         # Check current env vars or grepo settings.json for API keys
-        available_model_keys = check_models_api_key(env_vars, settings_json)
+        available_model_keys = check_models_api_key(env_vars, settings_json, root_dir)
 
+        # If no API keys were found in env vars or settings.json then we ask user to select and input
         if not available_model_keys:
             # Show model selection and entering API keys screens
             with GetchRaw():
@@ -99,6 +100,13 @@ def _main():
 
                 # Update the env vars and settings.json for future sessions
                 update_env_var_api_keys(Commands._api_keys, settings_json, root_dir)
+
+        else:
+            # Update the env vars and settings.json for future sessions
+            update_env_var_api_keys(available_model_keys, settings_json, root_dir)
+
+            # Render normal CLI if keys were found
+            split_screens.update_lower_split(main=True)
 
         # Start background threads
         input_processing_thread.start()

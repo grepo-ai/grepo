@@ -173,6 +173,7 @@ class RenderSplits:
                 box=NO_SIDE_BORDER_BOX,
                 border_style="#545454",
                 height=3,
+                width=self.console.size.width,
                 padding=(0, 1, 0, 1),
             )
 
@@ -250,12 +251,16 @@ class RenderSplits:
             )
 
             self._lower_split_panel.renderable = renderable_text
+
             if border_style is not None:
                 self._lower_split_panel.border_style = border_style
+
             self._lower_split_panel.height = height
 
+            if kwargs.get("clear_screen") is not None:
+                self._lower_split_panel.width = 150
             # Update box style when transitioning to input mode
-            if kwargs.get("buffer") is not None or kwargs.get("clear_screen"):
+            if kwargs.get("clear_screen"):
                 self._lower_split_panel.padding = (0, 1, 0, 1)
 
     def update_spinner(

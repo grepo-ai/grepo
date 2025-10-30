@@ -1,8 +1,10 @@
 from typing import Optional
 from cli.terminal import read_keystroke
+from agent.utils import MODEL_MAPPING
 
 
 class Commands:
+    _api_keys: list[dict] = []
     AVAILABLE_MAIN_COMMANDS = ["help", "config", "ask"]
     INIT_SCREEN_COMMANDS = [
         {
@@ -18,7 +20,6 @@ class Commands:
         self.console = console
         self.rendered_commands_region = rendered_regions
         self._buffer: str = ""
-        self._api_keys: list[dict]
 
     def show(
         self, type="MAIN", render_region: Optional[str] = None, screen_type: str = None
@@ -71,12 +72,16 @@ class Commands:
                     dynamic_selection = dynamic_selection % len(
                         self.__class__.INIT_SCREEN_COMMANDS
                     )
-                else:
+
+                elif screen_type not in ["init", "Select AI model"]:
+                    pass
+
+                elif screen_type == "Select AI model":
                     index = None
                     for idx, command_dict in enumerate(
                         self.__class__.INIT_SCREEN_COMMANDS
                     ):
-                        command_key = list(command_dict)[0]
+                        command_key = list(command_dict.keys())[0]
                         if screen_type == command_key:
                             index = idx
                             break
@@ -104,13 +109,78 @@ class Commands:
                         ]
                         selected_command = list(selected_command.keys())[0]
 
-                    else:
-                        selected_command = self.__class__.INIT_SCREEN_COMMANDS[
+                    # Eventually add more input based commands that will require similar flow
+                    elif screen_type in ["Select AI model"]:
+                        # Selected model name from the list of available models
+                        selected_model = self.__class__.INIT_SCREEN_COMMANDS[index][
                             screen_type
                         ][dynamic_selection]
 
+                        # Get the provider from model name
+                        selected_provider = MODEL_MAPPING.get(selected_model)
+
+                        # Clear the screen to show input field
+                        self.rendered_commands_region.update_lower_split(
+                            clear_screen=True,
+                        )
+
+                        # Initialize buffer for user input
+                        self._buffer = ""
+
+                        while True:
+                            char = read_keystroke()
+
+                            if not char:
+                                continue
+
+                            # Handle ESC key to cancel
+                            if char == "\x1b":
+                                self._buffer = ""
+                                return ""
+
+                            # char could be single char or paste event
+                            if len(char) > 1 and not char.startswith("\x1b"):
+                                self._buffer += char
+                                self.rendered_commands_region.update_lower_split(
+                                    buffer=self._buffer, is_first_time=False
+                                )
+
+                            # `Backspace` keystroke
+                            elif char == "\x7f":
+                                if self._buffer:  # Only delete if buffer is not empty
+                                    self._buffer = self._buffer[:-1]
+                                self.rendered_commands_region.update_lower_split(
+                                    buffer=self._buffer, is_first_time=False
+                                )
+
+                            # `Enter` keystroke
+                            elif char == "\n":
+                                if self._buffer:  # Only break if buffer has content
+                                    break
+
+                            # Single char keystroke (excluding arrow keys and control chars)
+                            elif char not in (
+                                "\x1b[B",
+                                "\x1b[A",
+                                "\x1b[C",
+                                "\x1b[D",
+                                "\n",
+                                "\x7f",
+                            ):
+                                self._buffer += char
+                                self.rendered_commands_region.update_lower_split(
+                                    buffer=self._buffer, is_first_time=False
+                                )
+
+                        self.__class__._api_keys.append(
+                            {selected_provider: self._buffer}
+                        )
+
+                        return
+
                     # --- Recursively render screens based on specific command selection ---
-                    # Update the list with new commands before entering recursion
+
+                    # Update the list with new commands before entering the current selection's further screen flow
                     self.rendered_commands_region.update_lower_split(
                         screen_type=selected_command, recursive_render=True
                     )
@@ -120,20 +190,21 @@ class Commands:
                         rendered_regions=self.rendered_commands_region,
                     ).show(render_region="lower", screen_type=selected_command)
 
-                    self.rendered_commands_region.update_lower_split(
-                        screen_type=screen_type, recursive_render=True
-                    )
+                    # Check we have collected input or not
+                    if self.__class__._api_keys:
+                        break
+                    else:
+                        self.rendered_commands_region.update_lower_split(
+                            screen_type=screen_type, recursive_render=True
+                        )
 
             # TODO: Add support for more non-printable escape sequences that are not required to be processed
             # For all keystrokes except arrow keys just return the char and add to main buffer
             if char not in ("\x1b[B", "\x1b[A", "\x1b[C", "\x1b[D", "\x7f", "\n"):
                 # These two keys are for exiting commands screens (footer and lower ones)
                 if char in ["q", "\t"]:
-                    return ""
-                return char
-
-            elif char == "\x7f":  # `Backspace` keystroke
-                return char[:-1]
+                    return self.__class__._api_keys
+                return self.__class__._api_keys
 
     @staticmethod
     def main_commands_selector(dynamic_selection=None):
@@ -180,17 +251,10 @@ class Commands:
 
         selected_command = "".join(commands)
 
-        if dynamic_selection is not None and screen_type == "Select AI model":
-            return (
-                selected_command
-                + "[dim]\n Press ↑/↓ to move up/down • `Enter` to select • `Tab` to go back[/]"
-            )
-
-        else:
-            return (
-                selected_command
-                + "[dim]\n\n Press ↑/↓ to move up/down • `Enter` to select • `Tab` to go back[/]"
-            )
+        return (
+            selected_command
+            + "[dim]\n\n Press ↑/↓ to move up/down • `Enter` to select • `Tab` to go back[/]"
+        )
 
     @staticmethod
     def input_render_styles(buffer=None, is_first_time=True, render_alert=None):

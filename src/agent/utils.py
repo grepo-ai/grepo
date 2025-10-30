@@ -4,10 +4,23 @@ import os
 import tempfile
 import shutil
 import json
+from enum import Enum
 
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 import diff_match_patch as dmp_module
+
+
+class ProviderMappingAPI(Enum):
+    ANTHROPIC_API_KEY = "ANTHROPIC_API_KEY"
+    OPENAI_API_KEY = "OPENAI_API_KEY"
+
+
+MODEL_MAPPING = {
+    "Anthropic Sonnet 4.5": "ANTHROPIC_API_KEY",
+    "Anthropic Sonnet 4": "ANTHROPIC_API_KEY",
+    "Anthropic Haiku 4.5": "ANTHROPIC_API_KEY",
+}
 
 
 def preprocess_dir(dir_path):

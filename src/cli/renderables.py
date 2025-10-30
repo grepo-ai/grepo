@@ -181,6 +181,7 @@ class RenderSplits:
         # Initial LLM selection and API input screen
         elif init and screen_type == "init":
             renderable_text = Commands.init_commands_selector(screen_type=screen_type)
+
             panel = Panel(
                 renderable_text,
                 box=ASCII2,
@@ -192,7 +193,7 @@ class RenderSplits:
             return panel
 
         elif render:
-            if kwargs.get("dynamic_selection", None) is not None:
+            if kwargs.get("dynamic_selection") is not None:
                 renderable_text = Commands.init_commands_selector(
                     dynamic_selection=kwargs.get("dynamic_selection"),
                     screen_type=screen_type,
@@ -206,6 +207,11 @@ class RenderSplits:
                     screen_type=screen_type
                 )
                 height = 8
+                border_style = None
+
+            elif kwargs.get("clear_screen", False):
+                renderable_text = "[dim]enter your API key[/]"
+                height = 3
                 border_style = None
 
             else:
@@ -248,6 +254,10 @@ class RenderSplits:
                 self._lower_split_panel.border_style = border_style
             self._lower_split_panel.height = height
 
+            # Update box style when transitioning to input mode
+            if kwargs.get("buffer") is not None or kwargs.get("clear_screen"):
+                self._lower_split_panel.padding = (0, 1, 0, 1)
+
     def update_spinner(
         self,
         spin_it: bool = True,
@@ -261,7 +271,7 @@ class RenderSplits:
 
         if spin_it:
             self.spinner.renderable = Spinner(
-                "dots", text=f"[#69FFB4]{status_text}[/]", style="#69FFB4"
+                "dots", text=f"[#60FCF5]{status_text}[/]", style="#60FCF5"
             )
 
         elif not spin_it and data is not None:

@@ -10,7 +10,13 @@ from agent.utils import generate_session_uuid, preprocess_dir
 from cli.commands import Commands
 from cli.terminal import GetchRaw, read_keystroke
 from cli.renderables import render_intro, RenderSplits
-from cli.utils import grepo_md_theme, get_env_vars
+from cli.utils import (
+    grepo_md_theme,
+    get_env_vars,
+    check_models_api_key,
+    update_env_var_api_keys,
+    get_or_create_settings,
+)
 from cli.threads import initiate_threads
 
 import click
@@ -26,6 +32,9 @@ def _main():
 
     # Create .grepo dir at root
     os.makedirs(f"{root_dir}/.grepo", exist_ok=True)
+
+    # Read settings file
+    settings_json = get_or_create_settings(root_dir)
 
     # --- Intial screen setup ---
     console = Console(highlight=False, theme=grepo_md_theme)
@@ -77,12 +86,19 @@ def _main():
     try:
         live_region.start()
 
-        # Render screen for model selection and entering API keys
-        with GetchRaw():
-            Commands(console=console, rendered_regions=split_screens).show(
-                render_region="lower", screen_type="init"
-            )
-            split_screens.update_lower_split(main=True)
+        # Check current env vars or grepo settings.json for API keys
+        available_model_keys = check_models_api_key(env_vars, settings_json)
+
+        if not available_model_keys:
+            # Show model selection and entering API keys screens
+            with GetchRaw():
+                Commands(console=console, rendered_regions=split_screens).show(
+                    render_region="lower", screen_type="init"
+                )
+                split_screens.update_lower_split(main=True)
+
+                # Update the env vars and settings.json for future sessions
+                update_env_var_api_keys(Commands._api_keys, settings_json, root_dir)
 
         # Start background threads
         input_processing_thread.start()
@@ -98,12 +114,12 @@ def _main():
                             continue
 
                         # Toggle `thinking` mode if available
-                        if char == "\t":
+                        elif char == "\t":
                             query_queue.put(char)
                             continue
 
                         # Handle paste event (both regular multi-char and bracketed paste)
-                        if len(char) > 1 and not char.startswith("\x1b"):
+                        elif len(char) > 1 and not char.startswith("\x1b"):
                             buffer += char
                             split_screens.update_lower_split(buffer=buffer)
                             break
@@ -112,7 +128,7 @@ def _main():
                             continue
 
                         # --- Process user's query on `Enter` keystroke ---
-                        if char == "\n" and len(buffer) > 0 and buffer[-1] != "\n":
+                        elif char == "\n" and len(buffer) > 0 and buffer[-1] != "\n":
                             query_queue.put(f"> {buffer}")
                             break
 
@@ -124,6 +140,7 @@ def _main():
                         elif not buffer and char == "\n":
                             continue
 
+                        # --- Add each character after all checks to the buffer and then update renderable ---
                         else:
                             buffer += char
 

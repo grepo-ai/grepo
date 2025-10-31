@@ -138,6 +138,7 @@ def inject_user_prompt(user_guidelines, root_dir, programming_langs):
     - Use markdown formatting for better readability but generate minimal markdown for important parts of response only.
     - Reference specific files and line numbers using the format: **file_path:line_number**
     - Do not generate file names or file paths wrapped in inline code just generate file names/paths as plain text
+    - Do not use any emoji in responses.
 
     ## Quality Assurance
 

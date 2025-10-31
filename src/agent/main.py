@@ -819,14 +819,9 @@ class Agent:
                                 )
 
                             elif msg.get("text"):
-                                if index == 0:
-                                    self._output_queue.append(
-                                        (f"\n[#FCFCFC]●[/] {msg['text']}\n", console)
-                                    )
-                                else:
-                                    self._output_queue.append(
-                                        (f"\n{msg['text']}\n", console)
-                                    )
+                                self._output_queue.append(
+                                    (f"\n[#FCFCFC]●[/] {msg['text']}\n", console)
+                                )
 
                     else:
                         markdown_text = Markdown(

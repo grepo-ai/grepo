@@ -201,12 +201,15 @@ class Commands:
 
             # TODO: Add support for more non-printable escape sequences that are not required to be processed
             # For all keystrokes except arrow keys just return the char and add to main buffer
-            if char not in ("\x1b[B", "\x1b[A", "\x1b[C", "\x1b[D", "\x7f", "\n"):
+            if char not in ("\x1b[B", "\x1b[A", "\x1b[C", "\x1b[D", "\n"):
                 # These two keys are for exiting commands screens (footer and lower ones)
                 if char in ["q", "\t"]:
                     return ""
 
-                return
+                elif char == "\x7f":
+                    return ""
+
+                return ""
 
     @staticmethod
     def main_commands_selector(dynamic_selection=None):

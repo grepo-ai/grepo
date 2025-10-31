@@ -164,7 +164,12 @@ def _main():
                                 console=console, rendered_regions=split_screens
                             ).show(render_region="footer")
 
-                            buffer += selected_command
+                            if len(selected_command) > 1:
+                                buffer += selected_command
+                            else:
+                                # No command selected
+                                buffer = buffer[:-1]
+
                             split_screens.update_lower_split(buffer=buffer)
                             split_screens.update_footer_split(blank=True)
                             split_screens._commands_palette_active = False

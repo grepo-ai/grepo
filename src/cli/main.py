@@ -1,3 +1,4 @@
+import sys
 import os
 import threading
 from queue import SimpleQueue
@@ -24,6 +25,10 @@ import click
 
 @click.command()
 def _main():
+    # Clear screen
+    sys.stdout.write("\033[2J\033[H")
+    sys.stdout.flush()
+
     # Get root dir of the codebase
     root_dir = os.getcwd()
 

@@ -4,7 +4,7 @@ import json
 import time
 import uuid
 import threading
-from typing import Union, Optional
+from typing import Union, Optional, TypedDict
 from collections import deque
 from pathlib import Path
 
@@ -58,6 +58,16 @@ from code_parser import language_map
 from cli.renderables import TreeRender
 
 
+class SessionStats(TypedDict):
+    total_input_tokens: int
+    total_output_tokens: int
+    cache_creation_input_tokens: int
+    cache_read_input_tokens: int
+    session_cost: float
+    context_window_used: float
+    model_used: str
+
+
 class Agent:
     def __init__(
         self,
@@ -94,7 +104,8 @@ class Agent:
         self._ui_renders: dict = {}
         self._active_auto_compaction: bool = False
         self._cycle_context_summary_cost: float = 0
-        self._session_context_summary_cost: float = 0
+        self._session_context_summary_stats: float = 0
+        self._session_cost_stats: list = []
 
     def _get_system_prompt(self, root_dir, preprocessed_env_data):
         agents_md_path = f"{root_dir}/AGENTS.md"
@@ -283,61 +294,33 @@ class Agent:
 
         return formatted_messages
 
-    # TODO: Current session cost calculation is not accounting for pre-compaction token usage
-    # so need to persist that data and later use in calculating final session cost
-    def session_cost(self, compaction=False):
-        all_state_messages = self.get_messages()
-        llm_client = self.llm_client
-
-        token_usage = {
-            "total_input_tokens": 0,
-            "total_output_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "cache_read_input_tokens": 0,
-            "session_cost": 0.00,
-            "context_window_used": 0.0,
-            "model_used": llm_client.get_model_name(llm_client.model),
-        }
-
-        token_usage["total_input_tokens"] = 0
-        token_usage["total_output_tokens"] = 0
-        token_usage["cache_creation_input_tokens"] = 0
-        token_usage["cache_read_input_tokens"] = 0
-
-        # Calculate total tokens to check if compaction is needed
-        for message in all_state_messages:
-            if isinstance(message, AIMessage):
-                response_metadata = message.response_metadata["usage"]
-                token_usage["total_input_tokens"] += response_metadata["input_tokens"]
-                token_usage["total_output_tokens"] += response_metadata["output_tokens"]
-                token_usage["cache_creation_input_tokens"] += response_metadata[
-                    "cache_creation_input_tokens"
-                ]
-                token_usage["cache_read_input_tokens"] += response_metadata[
-                    "cache_read_input_tokens"
-                ]
-
-        total_tokens_used = (
-            token_usage["total_input_tokens"]
-            + token_usage["total_output_tokens"]
-            + token_usage["cache_creation_input_tokens"]
-            + token_usage["cache_read_input_tokens"]
+    def session_cost(self):
+        token_usage = SessionStats(
+            total_input_tokens=0,
+            total_output_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+            session_cost=0,
+            context_window_used=0,
+            model_used=self.llm_client.get_model_name(self.llm_client.model),
         )
 
-        cost_per_token = llm_client.cost_per_token
+        for cycle_cost in self._session_cost_stats:
+            token_usage["total_input_tokens"] += cycle_cost["total_input_tokens"]
+            token_usage["total_output_tokens"] += cycle_cost["total_output_tokens"]
+            token_usage["cache_creation_input_tokens"] += cycle_cost[
+                "cache_creation_input_tokens"
+            ]
+            token_usage["cache_read_input_tokens"] += cycle_cost[
+                "cache_read_input_tokens"
+            ]
+            token_usage["session_cost"] += float(cycle_cost["cost"].strip("$"))
+            token_usage["context_window_used"] += float(
+                cycle_cost["context_window_used"].strip("%")
+            )
 
-        final_total_cost = (
-            token_usage["total_input_tokens"] * cost_per_token["input_token_cost"]
-            + token_usage["total_output_tokens"] * cost_per_token["output_token_cost"]
-            + token_usage["cache_creation_input_tokens"]
-            * cost_per_token["cache_write_cost_5m"]
-            + token_usage["cache_read_input_tokens"] * cost_per_token["cache_read_cost"]
-        )
-
-        token_usage["session_cost"] = f"${final_total_cost:.4f}"
-        token_usage["context_window_used"] = (
-            f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
-        )
+        token_usage["context_window_used"] = f"{token_usage['context_window_used']}%"
+        token_usage["total_input_tokens"] += self._session_context_summary_stats
 
         return token_usage
 
@@ -406,6 +389,7 @@ class Agent:
         )
 
         self._cycle_stats = cost_stats
+        self._session_cost_stats.append(cost_stats)
 
         # Format the final cost usage stats to renderable fortmat
         if render:
@@ -477,6 +461,8 @@ class Agent:
             if not last_message:
                 pass
 
+            # We only consider messages for compaction till last message with no active tool calls so for remaining messages
+            # we simply append them to agent's context as it during context re-write
             elif last_message_index > 0:
                 remaining_messages = all_messages[-last_message_index:]
                 all_messages = all_messages[:-last_message_index]
@@ -494,9 +480,10 @@ class Agent:
                 # Update the values of tokens in generated summary message as we are resetting token count
                 # The values in current response is coming from separate LLM call to generate summary so it will
                 # result in incorrect token calculation during subsequent auto-compaction run
-                pre_compaction_input_tokens = generated_summary.response_metadata[
+                pre_compaction_context_tokens = generated_summary.response_metadata[
                     "usage"
                 ]["input_tokens"]
+
                 generated_summary.usage_metadata["total_tokens"] = (
                     generated_summary.usage_metadata["output_tokens"]
                 )
@@ -556,12 +543,10 @@ class Agent:
 
                 # Append the latest context compaction cost
                 self._cycle_context_summary_cost += (
-                    pre_compaction_input_tokens * cost_per_token["input_token_cost"]
+                    pre_compaction_context_tokens * cost_per_token["input_token_cost"]
                 )
 
-                self._session_context_summary_cost += (
-                    pre_compaction_input_tokens * cost_per_token["input_token_cost"]
-                )
+                self._session_context_summary_stats += pre_compaction_context_tokens
 
             # UI compaction indicator flag
             self._active_auto_compaction = False

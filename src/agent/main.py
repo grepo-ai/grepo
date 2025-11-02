@@ -27,7 +27,6 @@ from agent.llm import LLMInterface
 
 
 from rich.console import Console
-from rich.tree import Tree
 from rich.syntax import Syntax
 from rich.markdown import Markdown
 from rich.text import Text
@@ -94,6 +93,8 @@ class Agent:
         self._output_queue: deque = output_queue
         self._ui_renders: dict = {}
         self._active_auto_compaction: bool = False
+        self._cycle_context_summary_cost: float = 0
+        self._session_context_summary_cost: float = 0
 
     def _get_system_prompt(self, root_dir, preprocessed_env_data):
         agents_md_path = f"{root_dir}/AGENTS.md"
@@ -282,6 +283,8 @@ class Agent:
 
         return formatted_messages
 
+    # TODO: Current session cost calculation is not accounting for pre-compaction token usage
+    # so need to persist that data and later use in calculating final session cost
     def session_cost(self, compaction=False):
         all_state_messages = self.get_messages()
         llm_client = self.llm_client
@@ -391,6 +394,12 @@ class Agent:
             + cost_stats["cache_read_input_tokens"] * cost_per_token["cache_read_cost"]
         )
 
+        # Add auto-compaction summary cost to final cycle cost
+        final_total_cost += self._cycle_context_summary_cost
+
+        # Reset after every agent cycle
+        self._cycle_context_summary_cost = 0
+
         cost_stats["cost"] = f"${final_total_cost:.4f}"
         cost_stats["context_window_used"] = (
             f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
@@ -452,6 +461,7 @@ class Agent:
             # Compact only messages upto last AIMessage and leave remaining messages as it is in state
             last_message = None
             last_message_index = None
+
             for index, msg in enumerate(reversed(all_messages)):
                 if isinstance(msg, AIMessage):
                     last_message = msg
@@ -477,8 +487,21 @@ class Agent:
             if last_message is not None and not has_tool_calls:
                 formatted_messages = self.format_state_messages(all_messages)
                 generated_summary = llm_client.generate_summary(
-                    "\n".join(formatted_messages)
+                    "\n".join(formatted_messages),
+                    used_context_size=session_context_size,
                 )
+
+                # Update the values of tokens in generated summary message as we are resetting token count
+                # The values in current response is coming from separate LLM call to generate summary so it will
+                # result in incorrect token calculation during subsequent auto-compaction run
+                pre_compaction_input_tokens = generated_summary.response_metadata[
+                    "usage"
+                ]["input_tokens"]
+                generated_summary.usage_metadata["total_tokens"] = (
+                    generated_summary.usage_metadata["output_tokens"]
+                )
+                generated_summary.response_metadata["usage"]["input_tokens"] = 0
+                generated_summary.usage_metadata["input_tokens"] = 0
 
                 rewrite_messages = [
                     HumanMessage(content="Summary of the entire conversation."),
@@ -530,6 +553,15 @@ class Agent:
 
                 print("--- cycle costs AFTER compaction ---")
                 print(cost_stats)
+
+                # Append the latest context compaction cost
+                self._cycle_context_summary_cost += (
+                    pre_compaction_input_tokens * cost_per_token["input_token_cost"]
+                )
+
+                self._session_context_summary_cost += (
+                    pre_compaction_input_tokens * cost_per_token["input_token_cost"]
+                )
 
             # UI compaction indicator flag
             self._active_auto_compaction = False

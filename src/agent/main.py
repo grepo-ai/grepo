@@ -322,6 +322,9 @@ class Agent:
         token_usage["context_window_used"] = f"{token_usage['context_window_used']}%"
         token_usage["total_input_tokens"] += self._session_context_summary_stats
 
+        # Round off final session cost value
+        token_usage["session_cost"] = f"{token_usage['session_cost']:.4f}"
+
         return token_usage
 
     def calculate_cycle_cost(self, render: bool = False):

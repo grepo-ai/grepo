@@ -215,6 +215,3 @@ grepo.db-wal
 test.js
 .grepo/
 grepo.egg-info
-
-# Internal Grepos dev file
-AGENTS.md

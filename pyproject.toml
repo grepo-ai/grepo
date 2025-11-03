@@ -1,35 +1,35 @@
 [project]
 name = "grepo"
 version = "0.1.0"
-requires-python = ">=3.10.18"
-authors = [
-{ name="mohammed tausif", email="mohdtausif@yahoo.com" },
-]
 description = "Lightweight agentic CLI for your terminal."
 readme = "README.md"
-classifiers = [
-    "Intended Audience :: Developers",
-    "Programming Language :: Python :: 3 :: Only",
-    "Operating System :: OS Independent",
-]
+requires-python = ">=3.10.18"
 license = "MIT"
+authors = [
+  { name = "mohammed tausif", email = "mohdtausif@yahoo.com" },
+]
+classifiers = [
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+]
 # license-files = ["LICEN[CS]E*"]
 dependencies = [
-    "click>=8.3.0",
-    "diff-match-patch>=20241021",
-    "langchain>=0.3.27",
-    "langchain-anthropic>=0.3.18",
-    "langfuse>=3.3.2",
-    "langgraph>=0.6.4",
-    "langgraph-checkpoint-sqlite>=2.0.11",
-    "pyfiglet>=1.0.3",
-    "python-dotenv>=1.1.1",
-    "rich>=14.1.0",
-    "setuptools>=80.9.0",
-    "tree-sitter>=0.25.1",
-    "tree-sitter-javascript>=0.25.0",
-    "tree-sitter-python>=0.23.6",
-    "tree-sitter-typescript>=0.23.2",
+  "click>=8.3.0",
+  "diff-match-patch>=20241021",
+  "langchain>=0.3.27",
+  "langchain-anthropic>=0.3.18",
+  "langfuse>=3.3.2",
+  "langgraph>=0.6.4",
+  "langgraph-checkpoint-sqlite>=2.0.11",
+  "pyfiglet>=1.0.3",
+  "python-dotenv>=1.1.1",
+  "rich>=14.1.0",
+  "setuptools>=80.9.0",
+  "tree-sitter>=0.25.1",
+  "tree-sitter-javascript>=0.25.0",
+  "tree-sitter-python>=0.23.6",
+  "tree-sitter-typescript>=0.23.2",
 ]
 
 [project.scripts]
@@ -44,4 +44,3 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
-exclude = ["tests*"]

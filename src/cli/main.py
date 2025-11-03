@@ -17,6 +17,7 @@ from cli.utils import (
     check_models_api_key,
     update_env_var_api_keys,
     get_or_create_settings,
+    check_version_updates,
 )
 from cli.threads import initiate_threads
 
@@ -83,7 +84,7 @@ def _main():
 
     live_region = Live(
         split_screens,
-        refresh_per_second=60,
+        refresh_per_second=100,
         console=console,
         transient=False,
     )

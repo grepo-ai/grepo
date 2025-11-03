@@ -13,8 +13,10 @@ from rich.box import SIMPLE, ASCII2
 from rich.spinner import Spinner
 from rich.table import Table
 from rich.tree import Tree
+from rich.padding import Padding
 from cli.commands import Commands
-from cli.utils import color_palette
+from cli.utils import color_palette, check_version_updates
+from cli import __version__
 
 
 # Custom box with no left/right borders (only top and bottom horizontal lines)
@@ -37,7 +39,7 @@ def render_intro(console):
     text.append(pyfiglet.figlet_format("grepo", font="ansi_shadow"))
 
     # Root directory and help or / commands info
-    init_lines = f"[#60FCF5]{text}[/]\n[{color_palette.get('intro-text-pink')}] cwd: {os.getcwd()}\n\n[italic] /help for help, / for list of commands[/]\n[#60FCF5] {'─' * 39}[/]"
+    init_lines = f"[#60FCF5]{text}[/]\n[{color_palette.get('intro-text-pink')}] cwd: {os.getcwd()}\n\n[italic] /help for help, / for list of commands\n\n version: {__version__}[/][#60FCF5]\n {'─' * 39}[/]"
     console.print(
         Panel(
             init_lines,
@@ -107,8 +109,8 @@ class RenderSplits:
 
     def _footer_panel(self, partial_render=False, init=False, blank=False, **kwargs):
         footer_tbl = Table.grid(expand=True)
-        footer_tbl.add_column("", ratio=3)
-        footer_tbl.add_column("", ratio=1, justify="right", no_wrap=True)
+        footer_tbl.add_column("", ratio=2)
+        footer_tbl.add_column("", ratio=2, justify="right", no_wrap=True)
         footer_tbl.add_column("", ratio=1, justify="right", no_wrap=True)
 
         if init or blank:
@@ -147,7 +149,17 @@ class RenderSplits:
                     f"{right_text}",
                 )
             else:
-                footer_tbl.add_row(f"{left_text}", "", f"{right_text}")
+                new_version = check_version_updates()
+                if new_version != __version__:
+                    update_alert = "[#FC7C7C]update available pip install -U grepo[/]"
+                else:
+                    update_alert = ""
+
+                footer_tbl.add_row(
+                    f"{left_text}",
+                    f"{update_alert}",
+                    f"{right_text}",
+                )
 
             return footer_tbl
 

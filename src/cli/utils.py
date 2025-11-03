@@ -2,10 +2,12 @@ import os
 import json
 from pathlib import Path
 import copy
+import requests
 
 
 from rich.theme import Theme
 from agent.utils import ProviderMappingAPI
+from cli import __version__
 
 
 color_palette = {
@@ -21,7 +23,7 @@ color_palette = {
     "light-purple": "#B6C8FA",
     "white": "#FCFCFC",
     "input-bar-green": "#69FFB4",
-    "landing-page-green":"#86F071"
+    "landing-page-green": "#86F071",
 }
 
 
@@ -133,3 +135,16 @@ def update_settings(root_dir: str, data: dict):
     # TODO: Make sure to first check existing settings and merge with new incoming settings
     with settings_file.open("w", encoding="utf-8") as file:
         json.dump(data, file, indent=2, ensure_ascii=False, sort_keys=True)
+
+
+def check_version_updates():
+    grepo_gh_url = "https://api.github.com/repos/grepo-ai/grepo/tags"
+
+    # TODO: Replace url with Grepo's post open-sourcing
+    grepo_releases = requests.get("https://api.github.com/repos/certbot/certbot/tags")
+
+    if grepo_releases.status_code == 200:
+        latest_version = grepo_releases.json()[0]["name"]
+        return latest_version
+
+    return __version__

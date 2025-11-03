@@ -8,15 +8,11 @@ class LLMInterface:
         self,
         llm_provider="anthropic",
         model="claude-sonnet-4-5-20250929",
-        thinking_mode: bool = False,
         max_tokens: int = 64000,
     ):
         self.model = model
         self.llm_provider = llm_provider
         self.max_tokens = max_tokens
-        self._thinking_mode = (
-            {"type": "enabled", "budget_tokens": 2000} if thinking_mode else None
-        )
         self._cost_per_token = self._get_cost_per_token()
         self._context_window_size = self._get_context_window_size()
         self._system_prompt = None
@@ -69,7 +65,6 @@ class LLMInterface:
             self._llm_client = ChatAnthropic(
                 model=self.model,
                 max_tokens=self.max_tokens,
-                thinking=self._thinking_mode,
             )
 
         return self._llm_client

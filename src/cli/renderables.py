@@ -9,11 +9,10 @@ from rich.console import Console, ConsoleOptions, Group, RenderResult
 from rich.text import Text
 from rich.panel import Panel
 from rich.box import Box
-from rich.box import SIMPLE, ASCII2
+from rich.box import SIMPLE, ROUNDED
 from rich.spinner import Spinner
 from rich.table import Table
 from rich.tree import Tree
-from rich.padding import Padding
 from cli.commands import Commands
 from cli.utils import color_palette, check_version_updates
 from cli import __version__
@@ -39,7 +38,7 @@ def render_intro(console):
     text.append(pyfiglet.figlet_format("grepo", font="ansi_shadow"))
 
     # Root directory and help or / commands info
-    init_lines = f"[#60FCF5]{text}[/]\n[{color_palette.get('intro-text-pink')}] cwd: {os.getcwd()}\n\n[italic] /help for help, / for list of commands\n\n version: {__version__}[/][#60FCF5]\n {'─' * 39}[/]"
+    init_lines = f"[#69FFB4]{text}[/]\n[{color_palette.get('intro-text-pink')}] cwd: {os.getcwd()}\n\n[italic] /help for help, / for list of commands\n\n version: {__version__}[/][#69FFB4]\n {'─' * 39}[/]"
     console.print(
         Panel(
             init_lines,
@@ -197,9 +196,10 @@ class RenderSplits:
 
             panel = Panel(
                 renderable_text,
-                box=ASCII2,
+                box=ROUNDED,
                 height=8,
                 width=100,
+                border_style="#545454",
                 padding=(1, 1, 0, 1),
             )
 

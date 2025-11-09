@@ -6,6 +6,7 @@ from typing import Any, Union
 
 
 from rich.console import Console, ConsoleOptions, Group, RenderResult
+from rich.align import Align
 from rich.text import Text
 from rich.panel import Panel
 from rich.box import Box
@@ -33,19 +34,27 @@ NO_SIDE_BORDER_BOX = Box(
 
 def render_intro(console):
     console.print("\n\n")
+
     # Grepo logo
     text = Text()
     text.append(pyfiglet.figlet_format("grepo", font="ansi_shadow"))
 
+    grid = Table.grid(padding=(0, 2))
+    grid.add_column(ratio=0)
+    grid.add_column(ratio=1)
+
     # Root directory and help or / commands info
-    init_lines = f"[#69FFB4]{text}[/]\n[{color_palette.get('intro-text-pink')}] cwd: {os.getcwd()}\n\n[italic] /help for help, / for list of commands\n\n version: {__version__}[/][#69FFB4]\n {'─' * 39}[/]"
-    console.print(
-        Panel(
-            init_lines,
-            box=SIMPLE,
-            padding=(0, 0, 0, 1),
-        )
+    left = f"[#69FFB4]{text}[/]"
+    right = f"[{color_palette.get('intro-text-pink')}]\ncwd: {os.getcwd()}\n\n[italic]/help for help, / for list of commands\n\nversion: {__version__}[/]"
+    grid.add_row(
+        Align.left(left, vertical="middle"), Align.right(right, vertical="top")
     )
+
+    box_panel = Panel(
+        grid, box=ROUNDED, padding=(1, 1, 0, 1), width=90, border_style="#FCFCFC"
+    )
+
+    console.print(box_panel)
 
 
 # Deprecated: (only kept for reference)

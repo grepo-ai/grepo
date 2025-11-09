@@ -24,6 +24,7 @@ color_palette = {
     "white": "#FCFCFC",
     "input-bar-green": "#69FFB4",
     "landing-page-green": "#86F071",
+    "grey": "#969696",
 }
 
 

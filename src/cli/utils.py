@@ -1,8 +1,9 @@
 import os
 import json
-from pathlib import Path
 import copy
 import requests
+import sqlite3
+from pathlib import Path
 
 
 from rich.theme import Theme
@@ -149,3 +150,8 @@ def check_version_updates():
         return latest_version
 
     return __version__
+
+
+def create_sqlite_connection(root_dir):
+    conn = sqlite3.connect(f"{root_dir}/.grepo/grepo.db", check_same_thread=False)
+    return conn

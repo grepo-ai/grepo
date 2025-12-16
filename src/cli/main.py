@@ -17,6 +17,7 @@ from cli.utils import (
     check_models_api_key,
     update_env_var_api_keys,
     get_or_create_settings,
+    create_sqlite_connection,
 )
 from cli.threads import initiate_threads
 
@@ -36,8 +37,11 @@ def _main():
     # Get API keys of LLMs from env variables
     env_vars = get_env_vars()
 
-    # Create .grepo dir at root
+    # Create .grepo dir at root if not exists
     os.makedirs(f"{root_dir}/.grepo", exist_ok=True)
+
+    # Create a connection to checkpoint Agent's state
+    grepo_sqlite_con = create_sqlite_connection(root_dir)
 
     # Read settings file
     settings_json = get_or_create_settings(root_dir)
@@ -69,6 +73,7 @@ def _main():
         "output_queue": output_queue,
         "lock": lock,
         "stop_event": stop_event,
+        "sqlite_con": grepo_sqlite_con,
     }
 
     # Initiate background processing threads
@@ -196,3 +201,4 @@ def _main():
 
     finally:
         live_region.stop()
+        grepo_sqlite_con.close()

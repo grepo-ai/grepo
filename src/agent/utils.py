@@ -47,10 +47,8 @@ def preprocess_dir(dir_path):
     return data_dict
 
 
-def get_checkpointer(root_dir):
-    checkpointer = SqliteSaver(
-        sqlite3.connect(f"{root_dir}/.grepo/grepo.db", check_same_thread=False)
-    )
+def get_checkpointer(root_dir, sqlite_con):
+    checkpointer = SqliteSaver(sqlite_con)
     return checkpointer
 
 

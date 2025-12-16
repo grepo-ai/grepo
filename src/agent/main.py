@@ -4,7 +4,7 @@ import json
 import time
 import uuid
 import threading
-from typing import Union, Optional, TypedDict
+from typing import Union, Optional, TypedDict, Any
 from collections import deque
 from pathlib import Path
 
@@ -1104,6 +1104,7 @@ def initiate_agent(
     model_provider: str,
     model: str,
     preprocessed_data: dict,
+    sqlite_con: Any = None,
 ):
     # --- Create an Agent ---
     agent = Agent(
@@ -1112,7 +1113,7 @@ def initiate_agent(
         provider=model_provider,
         tools=[list_files, read_file, grep, edit_file, get_code_block, glob, write],
         schema=GlobalState,
-        checkpointer=get_checkpointer(root_dir),
+        checkpointer=get_checkpointer(root_dir, sqlite_con),
         stream_mode="updates",
         auto_compact=False,
         output_queue=output_queue,

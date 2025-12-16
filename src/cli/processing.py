@@ -19,6 +19,7 @@ def bg_query_processing(
     output_queue=None,
     lock=None,
     stop_event=None,
+    sqlite_con=None,
 ):
     # --- Initiate Agent --- #
     agent = initiate_agent(
@@ -28,6 +29,7 @@ def bg_query_processing(
         model=model,
         model_provider=model_provider,
         preprocessed_data=preprocessed_data,
+        sqlite_con=sqlite_con,
     )
 
     status_thread = threading.Thread(

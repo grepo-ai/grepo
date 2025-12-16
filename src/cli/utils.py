@@ -69,7 +69,7 @@ def check_models_api_key(env_vars: dict, settings_json: dict, root_dir: str):
     # Check settings.json to see if we already saved any API key from previous session runs
     if settings_json:
         for key, val in settings_json.items():
-            if key in ProviderMappingAPI.__members__:
+            if key in ProviderMappingAPI.__members__ and val.strip():
                 api_keys.append({key: val})
 
     # Now check current env vars for any API key for the models supported

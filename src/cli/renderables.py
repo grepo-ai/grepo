@@ -33,11 +33,9 @@ NO_SIDE_BORDER_BOX = Box(
 
 
 def render_intro(console):
-    console.print("\n\n")
-
     # Grepo logo
     text = Text()
-    text.append(pyfiglet.figlet_format("grepo", font="ansi_shadow"))
+    text.append(pyfiglet.figlet_format("grepo", font="stop"))
 
     grid = Table.grid(padding=(0, 2))
     grid.add_column(ratio=0)
@@ -45,14 +43,12 @@ def render_intro(console):
 
     # Root directory and help or / commands info
     left = f"[#69FFB4]{text}[/]"
-    right = f"[{color_palette.get('intro-text-pink')}]\ncwd: {os.getcwd()}\n\n[italic]/help for help, / for list of commands\n\nversion: {__version__}[/]"
+    right = f"[#CAC7FF]\ndir: {os.getcwd()}\n[italic]\nversion: {__version__}[/]"
     grid.add_row(
-        Align.left(left, vertical="middle"), Align.right(right, vertical="top")
+        Align.left(left, vertical="middle"), Align.right(right, vertical="middle")
     )
 
-    box_panel = Panel(
-        grid, box=ROUNDED, padding=(1, 1, 0, 1), width=90, border_style="#FCFCFC"
-    )
+    box_panel = Panel(grid, box=SIMPLE, padding=(0, 1, 0, 1), width=90)
 
     console.print(box_panel)
 

@@ -1,5 +1,8 @@
+from typing import Optional
+
 from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
+
 from agent.state import inject_user_prompt
 
 
@@ -16,11 +19,12 @@ class LLMInterface:
         self._cost_per_token = self._get_cost_per_token()
         self._context_window_size = self._get_context_window_size()
         self._system_prompt = None
-        self._llm_client = None
+        self._llm_client: Optional[ChatAnthropic] = None
 
     @property
     def thinking(self):
-        return self._llm_client.thinking
+        if self._llm_client:
+            return self._llm_client.thinking
 
     @thinking.setter
     def thinking(self, flag: bool):
@@ -63,9 +67,9 @@ class LLMInterface:
         # Anthropic LLM
         if self.llm_provider == "anthropic":
             self._llm_client = ChatAnthropic(
-                model=self.model,
+                model=self.model,  # ty:ignore[unknown-argument]
                 max_tokens=self.max_tokens,
-            )
+            )  # ty:ignore[missing-argument]
 
         return self._llm_client
 
@@ -106,7 +110,7 @@ class LLMInterface:
         - Highlight and mention important insights during conversation that captures the core idea and intent of the conversation.
         - DO NOT GENERATE any new code or file paths or class, method or function names.
         - Summary should be in a proper Markdown format.
-        - Ensure the total tokens in generated summary are roughly around {used_context_size}/10 and should not exceed this value so be thoughtful and very accurate in preserving important
+        - Ensure the total tokens in generated summary are less than {used_context_size}/10 and should not exceed this value so be thoughtful and very accurate in preserving important
           message highlights, questions and responses.
 
         <example>

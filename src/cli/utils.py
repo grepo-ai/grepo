@@ -1,15 +1,14 @@
-import os
-import json
 import copy
-import requests
+import json
+import os
 import sqlite3
 from pathlib import Path
 
-
+import requests
 from rich.theme import Theme
+
 from agent.utils import ProviderMappingAPI
 from cli import __version__
-
 
 color_palette = {
     "green": "#7CFCA7",
@@ -140,7 +139,8 @@ def update_settings(root_dir: str, data: dict):
 
 
 def check_version_updates():
-    grepo_gh_url = "https://api.github.com/repos/grepo-ai/grepo/tags"
+    # TODO: Fetch latest tag from Grepo repo
+    # grepo_gh_url = "https://api.github.com/repos/grepo-ai/grepo/tags"
 
     # TODO: Replace url with Grepo's post open-sourcing
     grepo_releases = requests.get("https://api.github.com/repos/certbot/certbot/tags")

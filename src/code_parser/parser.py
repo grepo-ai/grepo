@@ -1,16 +1,13 @@
-from enum import Enum
-from collections import defaultdict
-from typing import Optional
 import os
+from collections import defaultdict
+from enum import Enum
+from typing import Optional
 
-
-from tree_sitter import Language, Parser, Query, QueryCursor
-import tree_sitter_python as tspython
 import tree_sitter_javascript as tsjavascript
-
+import tree_sitter_python as tspython
+from tree_sitter import Language, Parser, Query, QueryCursor, Tree
 
 from code_parser.queries import CODE_SYMBOLS_QUERY_MAP
-
 
 language_map = {"py": "PYTHON", "js": "JAVASCRIPT", "ts": "TYPESCRIPT"}
 
@@ -21,13 +18,14 @@ class ParserLanguages(Enum):
     TYPESCRIPT = "ts"
 
 
+# TODO think of a better class design
 class CodeWalker:
     def __init__(self, language: str):
         self._language_str = language
         self.language = self._set_language(language)
         self.parser = self._init_parser()
-        self.queries = None  # TODO think of a better class design
-        self.tree = None
+        self.queries = None
+        self.tree: Optional[Tree] = None
 
     def _set_language(self, language):
         if language == ParserLanguages.PYTHON.value:
@@ -46,14 +44,19 @@ class CodeWalker:
         return self.parser
 
     def create_query(self, query_expression: str, language: Language):
-        query = Query(language, query_expression.encode("utf-8"))
+        query = Query(language, query_expression)
         return query
 
     def create_query_cursor(self, query: Query) -> QueryCursor:
         query_cursor = QueryCursor(query)
         return query_cursor
 
-    def parse(self, encoded_code: str = None, single_query: str = None, node=None):
+    def parse(
+        self,
+        encoded_code: Optional[str] = None,
+        single_query: Optional[str] = None,
+        node=None,
+    ):
         """Parses the code or captures the node for a given query pattern"""
 
         if encoded_code:
@@ -65,8 +68,9 @@ class CodeWalker:
 
         # If `single_query` provided it takes precedence over multiple queries
         if single_query and not node:
-            node_captures = query_cursor.captures(self.tree.root_node)
-            return node_captures
+            if self.tree:
+                node_captures = query_cursor.captures(self.tree.root_node)
+                return node_captures
 
         elif single_query and node:
             node_captures = query_cursor.captures(node)
@@ -77,7 +81,7 @@ class CodeWalker:
     @staticmethod
     def encode_code(
         file_paths: Optional[list[str]] = None,
-        dir_path: str = None,
+        dir_path: Optional[str] = None,
         ignore_files: list[str] = [],
     ):
         """

@@ -1,61 +1,57 @@
+import json
 import os
 import re
-import json
+import threading
 import time
 import uuid
-import threading
-from typing import Union, Optional, TypedDict, Any
 from collections import deque
 from pathlib import Path
+from typing import Any, Optional, TypedDict, Union
 
-
-from langgraph.graph.state import CompiledStateGraph
-from langchain_core.messages import RemoveMessage
-from langchain_core.tools.base import BaseTool
-from langgraph.graph.message import REMOVE_ALL_MESSAGES
-from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.sqlite import SqliteSaver
-from langgraph.types import Command
-
-
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_anthropic import ChatAnthropic
-
-
-from agent.state import GlobalState
-from agent.llm import LLMInterface
-
-
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    RemoveMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from langchain_core.tools.base import BaseTool
+from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.prebuilt import create_react_agent
+from langgraph.types import Command
 from rich.console import Console
-from rich.syntax import Syntax
 from rich.markdown import Markdown
-from rich.text import Text
 from rich.style import Style
+from rich.syntax import Syntax
+from rich.text import Text
 
-
-# ---- Langfuse ---
-from agent.tracing import langfuse_handler
-
-
+from agent.llm import LLMInterface
+from agent.state import GlobalState
 from agent.tools import (
-    list_files,
-    read_file,
-    grep,
     edit_file,
     get_code_block,
     glob,
+    grep,
+    list_files,
+    read_file,
     write,
 )
+
+# ---- Langfuse ---
+from agent.tracing import langfuse_handler
 from agent.utils import (
-    get_checkpointer,
     construct_code,
-    format_grep_results,
     format_glob_results,
+    format_grep_results,
     format_list_files_results,
+    get_checkpointer,
 )
+from cli.renderables import TreeRender
 from cli.utils import code_block_md_theme, color_palette
 from code_parser import language_map
-from cli.renderables import TreeRender
 
 
 class SessionStats(TypedDict):
@@ -63,8 +59,8 @@ class SessionStats(TypedDict):
     total_output_tokens: int
     cache_creation_input_tokens: int
     cache_read_input_tokens: int
-    session_cost: float
-    context_window_used: float
+    session_cost: str | float
+    context_window_used: str | float
     model_used: str
 
 
@@ -137,7 +133,8 @@ class Agent:
 
     @property
     def thinking(self):
-        return self.model_interface.thinking
+        if self.model_interface:
+            return self.model_interface.thinking
 
     @thinking.setter
     def thinking(self, flag: bool):
@@ -152,7 +149,7 @@ class Agent:
 
     @property
     def agent_state(self):
-        return self._compiled_graph.get_state(self._config)
+        return self._compiled_graph.get_state(self._config)  # ty:ignore[invalid-argument-type]
 
     @property
     def cycle_stats(self):
@@ -167,17 +164,17 @@ class Agent:
 
     def get_messages(self, llm_messages=False):
         if llm_messages:
-            return self._compiled_graph.get_state(self._config).values.get(
+            return self._compiled_graph.get_state(self._config).values.get(  # ty:ignore[invalid-argument-type]
                 "llm_input_messages", []
             )
 
-        return self._compiled_graph.get_state(self._config).values.get("messages", [])
+        return self._compiled_graph.get_state(self._config).values.get("messages", [])  # ty:ignore[invalid-argument-type]
 
     def update_state(self, **kwargs):
         # Update agent's state with pre-processed data to be accessed during agent loop
         agent_state = self._compiled_graph
         agent_state.update_state(
-            self._config,
+            self._config,  # ty:ignore[invalid-argument-type]
             {
                 "languages": kwargs["prog_langs"],
                 "root_dir": kwargs["root_dir"],
@@ -188,13 +185,13 @@ class Agent:
     def update_messages(self, messages, compact=False):
         if compact:
             new_messages = [RemoveMessage(id=REMOVE_ALL_MESSAGES), *messages]
-            self._compiled_graph.update_state(self._config, {"messages": new_messages})
+            self._compiled_graph.update_state(self._config, {"messages": new_messages})  # ty:ignore[invalid-argument-type]
 
     def clear_session(
         self,
     ):
         self._compiled_graph.update_state(
-            self._config,
+            self._config,  # ty:ignore[invalid-argument-type]
             {
                 "messages": [
                     RemoveMessage(id=REMOVE_ALL_MESSAGES),
@@ -300,8 +297,8 @@ class Agent:
             total_output_tokens=0,
             cache_creation_input_tokens=0,
             cache_read_input_tokens=0,
-            session_cost=0,
-            context_window_used=0,
+            session_cost="0%",
+            context_window_used="0%",
             model_used=self.llm_client.get_model_name(self.llm_client.model),
         )
 
@@ -314,10 +311,10 @@ class Agent:
             token_usage["cache_read_input_tokens"] += cycle_cost[
                 "cache_read_input_tokens"
             ]
-            token_usage["session_cost"] += float(cycle_cost["cost"].strip("$"))
+            token_usage["session_cost"] += float(cycle_cost["cost"].strip("$"))  # ty:ignore[unsupported-operator]
             token_usage["context_window_used"] += float(
                 cycle_cost["context_window_used"].strip("%")
-            )
+            )  # ty:ignore[unsupported-operator]
 
         token_usage["context_window_used"] = f"{token_usage['context_window_used']}%"
         token_usage["total_input_tokens"] += self._session_context_summary_stats
@@ -413,7 +410,7 @@ class Agent:
                     continue
                 renderable_cost_stats += f"{usage_stats_keys.get(key)} {value} "
 
-            return f"[dim]{Text(renderable_cost_stats, (0, 0, 0, 1))}[/]"
+            return f"[dim]{Text(renderable_cost_stats, (0, 0, 0, 1))}[/]"  # ty:ignore[invalid-argument-type]
 
         return cost_stats
 
@@ -461,16 +458,13 @@ class Agent:
                 and len(last_message.tool_calls) > 0
             )
 
-            if not last_message:
-                pass
-
             # We only consider messages for compaction till last message with no active tool calls so for remaining messages
             # we simply append them to agent's context as it during context re-write
-            elif last_message_index > 0:
+            if last_message_index is not None and last_message_index > 0:
                 remaining_messages = all_messages[-last_message_index:]
                 all_messages = all_messages[:-last_message_index]
 
-            elif last_message_index == 0:
+            elif last_message_index is not None and last_message_index == 0:
                 remaining_messages = []
 
             if last_message is not None and not has_tool_calls:
@@ -554,6 +548,7 @@ class Agent:
             # UI compaction indicator flag
             self._active_auto_compaction = False
 
+    # Deprecated: Compaction logic
     def auto_compact_context(self):
         """
         Compaction automatically happens when the chat session is just about to reach context window size
@@ -604,7 +599,7 @@ class Agent:
                         and not last_message.tool_calls
                     ):
                         generated_summary = llm_client.generate_summary(
-                            "\n".join(formatted_messages)
+                            "\n".join(formatted_messages), 0
                         )
 
                         # TODO: Handle case when new messages might arrive while compaction is happening and we have not added those
@@ -704,16 +699,16 @@ class Agent:
 
     def _create(self):
         self._compiled_graph = create_react_agent(
-            self.model_interface,
+            self.model_interface,  # ty:ignore[invalid-argument-type]
             tools=self.tools,
-            state_schema=self.state_schema,
+            state_schema=self.state_schema,  # ty:ignore[invalid-argument-type]
             checkpointer=self.checkpointer,
             prompt=self.system_prompt,
             pre_model_hook=self.custom_pre_model_hook(),
         )
 
         # Run auto-compaction in background
-        self.auto_compact_context()
+        # self.auto_compact_context()
 
         # --- Text formatting ---
         console = Console()
@@ -725,7 +720,9 @@ class Agent:
         # Returns a new generator on each new invocation of user input
         # simply iterate over generator object to get stream updates
         return self._compiled_graph.stream(
-            input=input, config=self._config, stream_mode=self.stream_mode
+            input=input,
+            config=self._config,  # ty:ignore[invalid-argument-type]
+            stream_mode=self.stream_mode,  # ty:ignore[invalid-argument-type]
         )
 
     def invoke(
@@ -1112,7 +1109,7 @@ def initiate_agent(
         model=model,
         provider=model_provider,
         tools=[list_files, read_file, grep, edit_file, get_code_block, glob, write],
-        schema=GlobalState,
+        schema=GlobalState,  # ty:ignore[invalid-argument-type]
         checkpointer=get_checkpointer(root_dir, sqlite_con),
         stream_mode="updates",
         auto_compact=False,

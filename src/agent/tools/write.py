@@ -1,19 +1,8 @@
 import os
-import glob as std_glob
-import re
-import tempfile
 import shutil
-from typing import Annotated, Optional, Union
-from typing_extensions import TypedDict
+import tempfile
 
-from langchain_core.tools import tool, InjectedToolCallId
-from langchain_core.messages import ToolMessage
-from langgraph.prebuilt import InjectedState
-
-from agent.state import GlobalState
-from langgraph.types import Command, interrupt
-from agent.utils import apply_diff, generate_diff
-
+from langchain_core.tools import tool
 
 WRITE_TOOL_DESCRIPTION = """
     Use this tool to create a new file to write the new data to the file or simply append new data in an existing file.
@@ -31,7 +20,7 @@ WRITE_TOOL_DESCRIPTION = """
 
 
 @tool(description=WRITE_TOOL_DESCRIPTION)
-def write(pathname: Optional[str], code: str, line_number: int = 0) -> str:
+def write(pathname: str, code: str, line_number: int = 0) -> str:
     try:
         # Check if pathname exists else create required directories and files based on type
         path_exists = os.path.exists(pathname)

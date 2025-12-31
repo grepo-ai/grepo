@@ -1,38 +1,42 @@
-import sys
 import os
+import sys
 import threading
+from collections import deque
 from queue import SimpleQueue
+
+import click  # ty:ignore[unresolved-import]
 from rich.console import Console
 from rich.live import Live
-from collections import deque
-
 
 from agent.utils import generate_session_uuid, preprocess_dir
 from cli.commands import Commands
+from cli.renderables import RenderSplits, render_intro
 from cli.terminal import GetchRaw, read_keystroke
-from cli.renderables import render_intro, RenderSplits
-from cli.utils import (
-    grepo_md_theme,
-    get_env_vars,
-    check_models_api_key,
-    update_env_var_api_keys,
-    get_or_create_settings,
-    create_sqlite_connection,
-)
 from cli.threads import initiate_threads
-
-
-import click
+from cli.utils import (
+    check_models_api_key,
+    create_sqlite_connection,
+    get_env_vars,
+    get_or_create_settings,
+    grepo_md_theme,
+    update_env_var_api_keys,
+)
 
 
 @click.command()
 def _main():
+    # console setup
+    console = Console(highlight=False, theme=grepo_md_theme)
+
     # Clear screen
     sys.stdout.write("\033[2J\033[H")
     sys.stdout.flush()
 
     # Get root dir of the codebase
     root_dir = os.getcwd()
+
+    # Intro screen
+    render_intro(console)
 
     # Get API keys of LLMs from env variables
     env_vars = get_env_vars()
@@ -45,12 +49,6 @@ def _main():
 
     # Read settings file
     settings_json = get_or_create_settings(root_dir)
-
-    # --- Intial screen setup ---
-    console = Console(highlight=False, theme=grepo_md_theme)
-
-    # Welcome screen and (add intial model/api-key settings via arrow keys and toggle -> TODO)
-    render_intro(console)
 
     # Run pre-processing to get information like programming languages used in codebase etc.
     preprocessed_data = preprocess_dir(root_dir)

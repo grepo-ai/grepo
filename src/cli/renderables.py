@@ -1,23 +1,21 @@
 import os
-from dataclasses import dataclass, field
-import pyfiglet
 import random
-from typing import Any, Union
+from dataclasses import dataclass, field
+from typing import Any, Optional, Union
 
-
-from rich.console import Console, ConsoleOptions, Group, RenderResult
+import pyfiglet
 from rich.align import Align
-from rich.text import Text
+from rich.box import ROUNDED, SIMPLE, Box
+from rich.console import Console, ConsoleOptions, Group, RenderResult
 from rich.panel import Panel
-from rich.box import Box
-from rich.box import SIMPLE, ROUNDED
 from rich.spinner import Spinner
 from rich.table import Table
+from rich.text import Text
 from rich.tree import Tree
-from cli.commands import Commands
-from cli.utils import color_palette, check_version_updates
-from cli import __version__
 
+from cli import __version__
+from cli.commands import Commands
+from cli.utils import check_version_updates
 
 # Custom box with no left/right borders (only top and bottom horizontal lines)
 NO_SIDE_BORDER_BOX = Box(
@@ -177,6 +175,13 @@ class RenderSplits:
                 f"{right_text}",
             )
 
+            panel = Panel(
+                footer_tbl,
+                box=SIMPLE,
+                height=0,
+                padding=(0, 1, 0, 1),
+            )
+
             return panel
 
     def _lower_panel(
@@ -283,8 +288,8 @@ class RenderSplits:
     def update_spinner(
         self,
         spin_it: bool = True,
-        status_text: str = None,
-        data: str = None,
+        status_text: Optional[str] = None,
+        data: Optional[str] = None,
     ):
         status_fillers = ["Jellying...", "Chewing GPUs...", "Poking intelligence..."]
 
@@ -391,15 +396,15 @@ class TreeRender:
             "tree": Tree(f"{data}[/]"),
         }
 
-        self.node_map[id] = (tree_map.get(name), set())
+        self.node_map[id] = (tree_map.get(name), set())  # ty:ignore[invalid-assignment]
 
     def get_tree(self, id: str):
         if id in self.node_map:
-            return self.node_map.get(id)[0]
+            return self.node_map.get(id)[0]  # ty:ignore[non-subscriptable]
 
     def get_tree_leafs(self, id):
         if id in self.node_map:
-            return self.node_map.get(id)[1]
+            return self.node_map.get(id)[1]  # ty:ignore[non-subscriptable]
 
     def add_leaf(self, id: str, values: list | str):
         if id not in self.node_map:
@@ -441,7 +446,7 @@ if __name__ == "__main__":
     console = Console()
 
     tree_render = TreeRender()
-    grep_tree = tree_render.build_tree(name="grep")
+    grep_tree = tree_render.build_tree(name="grep")  # ty:ignore[missing-argument]
     paths = ["/src/agent/main.py", "/src/cli/main.py", "/src/agent/tools.py"]
 
     tree_render.add_leaf(grep_tree, values=paths)

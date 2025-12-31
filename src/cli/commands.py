@@ -1,28 +1,36 @@
 from typing import Optional
-from cli.terminal import read_keystroke
+
+from rich.console import Console
+
 from agent.utils import MODEL_MAPPING
+from cli.renderables import RenderSplits
+from cli.terminal import read_keystroke
 
 
 class Commands:
     _api_keys: list[dict] = []
-    AVAILABLE_MAIN_COMMANDS = ["help", "config", "ask"]
-    INIT_SCREEN_COMMANDS = [
+    AVAILABLE_MAIN_COMMANDS: list[str] = ["help", "config", "ask"]
+    INIT_SCREEN_COMMANDS: list[dict[str, list]] = [
         {
             "Select AI model": [
                 "Anthropic Sonnet 4.5",
                 "Anthropic Sonnet 4",
                 "Anthropic Haiku 4.5",
+                "Anthropic Opus 4.5",
             ]
         },
     ]
 
-    def __init__(self, console=None, rendered_regions=None):
+    def __init__(self, console: Console, rendered_regions: RenderSplits):
         self.console = console
         self.rendered_commands_region = rendered_regions
         self._buffer: str = ""
 
     def show(
-        self, type="MAIN", render_region: Optional[str] = None, screen_type: str = None
+        self,
+        type="MAIN",
+        render_region: Optional[str] = None,
+        screen_type: Optional[str] = None,
     ):
         dynamic_selection = -1
 
@@ -87,7 +95,7 @@ class Commands:
                             break
 
                     dynamic_selection = dynamic_selection % len(
-                        self.__class__.INIT_SCREEN_COMMANDS[index][screen_type]
+                        self.__class__.INIT_SCREEN_COMMANDS[index][screen_type]  # ty:ignore[invalid-argument-type]
                     )
 
             # Instead of passing to main buffer manage independent flows for each command in footer rendered region only
@@ -112,7 +120,7 @@ class Commands:
                     # --- Eventually add more input based commands that will require similar flow ---
                     elif screen_type in ["Select AI model"]:
                         # Selected model name from the list of available models
-                        selected_model = self.__class__.INIT_SCREEN_COMMANDS[index][
+                        selected_model = self.__class__.INIT_SCREEN_COMMANDS[index][  # ty:ignore[invalid-argument-type]
                             screen_type
                         ][dynamic_selection]
 
@@ -140,7 +148,6 @@ class Commands:
 
                             # char could be single char or paste event
                             elif len(char) > 1 and not char.startswith("\x1b"):
-                                print("#####")
                                 self._buffer += char
                                 self.rendered_commands_region.update_lower_split(
                                     buffer=self._buffer, is_first_time=False
@@ -234,7 +241,9 @@ class Commands:
         )
 
     @staticmethod
-    def init_commands_selector(dynamic_selection=None, screen_type: str = None):
+    def init_commands_selector(
+        dynamic_selection=None, screen_type: Optional[str] = None
+    ):
         if screen_type == "init":
             commands = ["[dim]• Select AI model\n[/]"]
 
@@ -243,6 +252,7 @@ class Commands:
                 "[dim]• Anthropic Sonnet 4.5\n[/]",
                 "[dim]• Anthropic Sonnet 4\n[/]",
                 "[dim]• Anthropic Haiku 4.5\n[/]",
+                "[dim]• Anthropic Opus 4.5\n[/]",
             ]
 
         if dynamic_selection is not None:

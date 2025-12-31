@@ -1,8 +1,8 @@
+import select
 import sys
 import termios
-import select
-import tty
 import time
+import tty
 
 
 class GetchRaw:

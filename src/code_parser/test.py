@@ -1,10 +1,9 @@
 "This file has sample code to test Tree-sitter and learn how it works"
 
-from tree_sitter import Language, Parser
 import tree_sitter_python as tspython
-from pprint import pprint
-from .code_parser import CodeWalker, ParserLanguages
+from tree_sitter import Language, Parser
 
+from code_parser import CodeWalker, ParserLanguages
 
 code = """
 class Thronefall:
@@ -37,15 +36,15 @@ test_query = """(class_definition
 ) @classes"""
 
 
-stmt_str_query = py_language.query(test_query)
+# stmt_str_query = py_language.query(test_query)
 
-tree_captures = stmt_str_query.captures(tree.root_node)
+# tree_captures = stmt_str_query.captures(tree.root_node)
 
 
 # --- Test code ---
 if __name__ == "__main__":
-    from pathlib import Path
     import json
+    from pathlib import Path
 
     abs_file_path = "/Users/tausif/grepo-main-env/grepo/src/hello.js"
     file_path = str(Path(abs_file_path))

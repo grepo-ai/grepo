@@ -1,13 +1,7 @@
 import os
-from langfuse import Langfuse, get_client
+
+from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
-from langchain_anthropic import ChatAnthropic
-from langchain_core.prompts import ChatPromptTemplate
-from dotenv import load_dotenv
-
-
-# load_dotenv()
-
 
 Langfuse(
     public_key=os.environ.get("LANGFUSE_PUBLIC_KEY"),

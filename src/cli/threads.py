@@ -1,6 +1,7 @@
 import threading
 import traceback
-from cli.processing import bg_query_processing, bg_query_logs_processing
+
+from cli.processing import bg_query_logs_processing, bg_query_processing
 
 
 def initiate_threads(

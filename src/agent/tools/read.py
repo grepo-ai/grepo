@@ -1,20 +1,8 @@
-import os
-import glob
-import re
-from typing import Annotated, Optional
-from typing_extensions import TypedDict
-
-from langchain_core.tools import tool, InjectedToolCallId
-from langchain_core.messages import ToolMessage
-from langgraph.prebuilt import InjectedState
-
-from agent.state import GlobalState
-from langgraph.types import Command, interrupt
-from agent.utils import apply_diff, generate_diff
+from langchain_core.tools import tool
 
 
 @tool
-def read_file(file_path: str) -> list[Optional[str]]:
+def read_file(file_path: str) -> tuple[str, list[str]]:
     "Takes a file path and reads the contents of the file and returns the contents for further use"
 
     file_contents = []

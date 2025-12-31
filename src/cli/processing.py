@@ -1,8 +1,12 @@
-import time
 import queue
 import threading
-from rich.text import Text
+import time
+from collections import deque
+from queue import SimpleQueue
+
 from rich.padding import Padding
+from rich.text import Text
+
 from agent.main import initiate_agent
 
 
@@ -13,19 +17,19 @@ def bg_query_processing(
     renderable_splits,
     session_uuid,
     preprocessed_data,
+    stop_event: threading.Event,
+    query_queue: SimpleQueue,
+    output_queue: deque,
+    lock: threading.Lock,
     model="claude-sonnet-4-5-20250929",
     model_provider="anthropic",
-    query_queue=None,
-    output_queue=None,
-    lock=None,
-    stop_event=None,
     sqlite_con=None,
 ):
     # --- Initiate Agent --- #
     agent = initiate_agent(
         root_dir=root_dir,
         session_uuid=session_uuid,
-        output_queue=output_queue,
+        output_queue=output_queue,  # ty:ignore[invalid-argument-type]
         model=model,
         model_provider=model_provider,
         preprocessed_data=preprocessed_data,
@@ -70,7 +74,11 @@ def bg_query_processing(
 
 
 def bg_query_logs_processing(
-    renderable_splits, console, output_queue=None, lock=None, stop_event=None
+    renderable_splits,
+    console,
+    stop_event: threading.Event,
+    output_queue: deque,
+    lock: threading.Lock,
 ):
     while not stop_event.is_set():
         try:
@@ -94,7 +102,9 @@ def bg_query_logs_processing(
         time.sleep(0.1)
 
 
-def compaction_status_updates(renderable_splits, console, agent, stop_event=None):
+def compaction_status_updates(
+    renderable_splits, console, agent, stop_event: threading.Event
+):
     while not stop_event.is_set():
         if renderable_splits._commands_palette_active:
             continue

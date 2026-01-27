@@ -297,8 +297,8 @@ class Agent:
             total_output_tokens=0,
             cache_creation_input_tokens=0,
             cache_read_input_tokens=0,
-            session_cost="0%",
-            context_window_used="0%",
+            session_cost=0,
+            context_window_used=0,
             model_used=self.llm_client.get_model_name(self.llm_client.model),
         )
 

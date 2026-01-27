@@ -48,7 +48,11 @@ def initiate_threads(
                 split_screens,
                 console,
             ),
-            kwargs={"output_queue": output_queue, "stop_event": stop_event},
+            kwargs={
+                "output_queue": output_queue,
+                "stop_event": stop_event,
+                "lock": lock,
+            },
             daemon=True,
         )
 

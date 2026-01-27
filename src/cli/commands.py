@@ -1,27 +1,31 @@
-from typing import Optional
+from typing import Any, Optional
 
 from rich.console import Console
 
 from agent.utils import MODEL_MAPPING
-from cli.renderables import RenderSplits
 from cli.terminal import read_keystroke
 
 
 class Commands:
     _api_keys: list[dict] = []
     AVAILABLE_MAIN_COMMANDS: list[str] = ["help", "config", "ask"]
-    INIT_SCREEN_COMMANDS: list[dict[str, list]] = [
+    INIT_SCREEN_COMMANDS: list[Any] = [
         {
-            "Select AI model": [
-                "Anthropic Sonnet 4.5",
-                "Anthropic Sonnet 4",
-                "Anthropic Haiku 4.5",
-                "Anthropic Opus 4.5",
+            "Select Provider": [  # Menu Option 1: --> Select LLM provider
+                {
+                    "Anthropic": {
+                        "Select Model": [  # Menu Option 1.1: --> Select Model
+                            "Anthropic Sonnet 4.5",
+                            "Anthropic Haiku 4.5",
+                            "Anthropic Opus 4.5",
+                        ]
+                    }
+                }
             ]
-        },
+        }
     ]
 
-    def __init__(self, console: Console, rendered_regions: RenderSplits):
+    def __init__(self, console: Console, rendered_regions):
         self.console = console
         self.rendered_commands_region = rendered_regions
         self._buffer: str = ""
@@ -81,10 +85,10 @@ class Commands:
                         self.__class__.INIT_SCREEN_COMMANDS
                     )
 
-                elif screen_type not in ["init", "Select AI model"]:
+                elif screen_type not in ["init", "Select Provider", "Select Model"]:
                     pass
 
-                elif screen_type == "Select AI model":
+                elif screen_type == "Select Provider":
                     index = None
                     for idx, command_dict in enumerate(
                         self.__class__.INIT_SCREEN_COMMANDS
@@ -116,9 +120,10 @@ class Commands:
                             dynamic_selection
                         ]
                         selected_command = list(selected_command.keys())[0]
+                        print(selected_command)
 
                     # --- Eventually add more input based commands that will require similar flow ---
-                    elif screen_type in ["Select AI model"]:
+                    elif screen_type in ["Select Provider"]:
                         # Selected model name from the list of available models
                         selected_model = self.__class__.INIT_SCREEN_COMMANDS[index][  # ty:ignore[invalid-argument-type]
                             screen_type
@@ -127,62 +132,62 @@ class Commands:
                         # Get the provider from model name
                         selected_provider = MODEL_MAPPING.get(selected_model)
 
-                        # Clear the screen to show input field
-                        self.rendered_commands_region.update_lower_split(
-                            clear_screen=True,
-                        )
+                        # # Clear the screen to show input field
+                        # self.rendered_commands_region.update_lower_split(
+                        #     clear_screen=True,
+                        # )
 
-                        # Initialize buffer for user input
-                        self._buffer = ""
+                        # # Initialize buffer for user input
+                        # self._buffer = ""
 
-                        while True:
-                            char = read_keystroke()
+                        # while True:
+                        #     char = read_keystroke()
 
-                            if not char:
-                                continue
+                        #     if not char:
+                        #         continue
 
-                            # Handle ESC key to cancel
-                            elif char == "\x1b":
-                                self._buffer = ""
-                                return ""
+                        #     # Handle ESC key to cancel
+                        #     elif char == "\x1b":
+                        #         self._buffer = ""
+                        #         return ""
 
-                            # char could be single char or paste event
-                            elif len(char) > 1 and not char.startswith("\x1b"):
-                                self._buffer += char
-                                self.rendered_commands_region.update_lower_split(
-                                    buffer=self._buffer, is_first_time=False
-                                )
+                        #     # char could be single char or paste event
+                        #     elif len(char) > 1 and not char.startswith("\x1b"):
+                        #         self._buffer += char
+                        #         self.rendered_commands_region.update_lower_split(
+                        #             buffer=self._buffer, is_first_time=False
+                        #         )
 
-                            # `Backspace` keystroke
-                            elif char == "\x7f":
-                                if self._buffer:  # Only delete if buffer is not empty
-                                    self._buffer = self._buffer[:-1]
-                                self.rendered_commands_region.update_lower_split(
-                                    buffer=self._buffer, is_first_time=False
-                                )
+                        #     # `Backspace` keystroke
+                        #     elif char == "\x7f":
+                        #         if self._buffer:  # Only delete if buffer is not empty
+                        #             self._buffer = self._buffer[:-1]
+                        #         self.rendered_commands_region.update_lower_split(
+                        #             buffer=self._buffer, is_first_time=False
+                        #         )
 
-                            # `Enter` keystroke
-                            elif char == "\n":
-                                if self._buffer:  # Only break if buffer has content
-                                    break
+                        #     # `Enter` keystroke
+                        #     elif char == "\n":
+                        #         if self._buffer:  # Only break if buffer has content
+                        #             break
 
-                            # Single char keystroke (excluding arrow keys and control chars)
-                            elif char not in (
-                                "\x1b[B",
-                                "\x1b[A",
-                                "\x1b[C",
-                                "\x1b[D",
-                                "\n",
-                                "\x7f",
-                            ):
-                                self._buffer += char
-                                self.rendered_commands_region.update_lower_split(
-                                    buffer=self._buffer, is_first_time=False
-                                )
+                        #     # Single char keystroke (excluding arrow keys and control chars)
+                        #     elif char not in (
+                        #         "\x1b[B",
+                        #         "\x1b[A",
+                        #         "\x1b[C",
+                        #         "\x1b[D",
+                        #         "\n",
+                        #         "\x7f",
+                        #     ):
+                        #         self._buffer += char
+                        #         self.rendered_commands_region.update_lower_split(
+                        #             buffer=self._buffer, is_first_time=False
+                        #         )
 
-                        self.__class__._api_keys.append(
-                            {selected_provider: self._buffer}
-                        )
+                        # self.__class__._api_keys.append(
+                        #     {selected_provider: self._buffer}
+                        # )
 
                         return
 
@@ -245,12 +250,14 @@ class Commands:
         dynamic_selection=None, screen_type: Optional[str] = None
     ):
         if screen_type == "init":
-            commands = ["[dim]• Select AI model\n[/]"]
+            commands = ["[dim]• Select Provider\n[/]"]
 
-        elif screen_type == "Select AI model":
+        elif screen_type == "Select Provider":
+            commands = ["[dim]• Anthropic\n[/]"]
+
+        elif screen_type == "Select Model":
             commands = [
                 "[dim]• Anthropic Sonnet 4.5\n[/]",
-                "[dim]• Anthropic Sonnet 4\n[/]",
                 "[dim]• Anthropic Haiku 4.5\n[/]",
                 "[dim]• Anthropic Opus 4.5\n[/]",
             ]

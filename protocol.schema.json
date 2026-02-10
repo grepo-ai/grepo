@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "grepo-stdio-protocol",
+  "title": "Grepo NDJSON stdio protocol",
+  "description": "Protocol between the Ink UI (Node/Bun) and the Python backend. One JSON message per line (NDJSON). Every message is an object with exactly 'type' and 'value'. UI sends StdinMessage on stdin; backend sends StdoutMessage on stdout. See PROTOCOL.md in this directory for event flow and examples.",
+  "oneOf": [
+    { "$ref": "#/$defs/StdinMessage" },
+    { "$ref": "#/$defs/StdoutMessage" }
+  ],
+  "$defs": {
+    "StdinMessage": {
+      "description": "Message from UI to backend (stdin). Exactly one of: init, query, set_thinking, cancel.",
+      "type": "object",
+      "required": ["type", "value"],
+      "additionalProperties": false,
+      "oneOf": [
+        { "type": "object", "properties": { "type": { "const": "init" }, "value": { "$ref": "#/$defs/InitValue" } }, "required": ["type", "value"] },
+        { "type": "object", "properties": { "type": { "const": "query" }, "value": { "type": "string" } }, "required": ["type", "value"] },
+        { "type": "object", "properties": { "type": { "const": "set_thinking" }, "value": { "type": "boolean" } }, "required": ["type", "value"] },
+        { "type": "object", "properties": { "type": { "const": "cancel" }, "value": {} }, "required": ["type", "value"] }
+      ]
+    },
+    "StdoutMessage": {
+      "description": "Message from backend to UI (stdout). One of: ready, status, delta, done, error, tool_start, tool_result, thinking, cost, interrupt.",
+      "type": "object",
+      "required": ["type", "value"],
+      "additionalProperties": false,
+      "oneOf": [
+        { "type": "object", "properties": { "type": { "const": "ready" }, "value": { "$ref": "#/$defs/ReadyValue" } }, "required": ["type", "value"] },
+        { "type": "object", "properties": { "type": { "const": "status" }, "value": { "$ref": "#/$defs/StatusValue" } }, "required": ["type", "value"] },
+        { "type": "object", "properties": { "type": { "const": "delta" }, "value": { "type": "string" } }, "required": ["type", "value"] },
+        { "type": "object", "properties": { "type": { "const": "done" }, "value": { "type": "null" } }, "required": ["type", "value"] },
+        { "type": "object", "properties": { "type": { "const": "error" }, "value": { "type": "string" } }, "required": ["type", "value"] },
+        { "type": "object", "properties": { "type": { "const": "tool_start" }, "value": { "$ref": "#/$defs/ToolStartValue" } }, "required": ["type", "value"] },
+        { "type": "object", "properties": { "type": { "const": "tool_result" }, "value": { "$ref": "#/$defs/ToolResultValue" } }, "required": ["type", "value"] },
+        { "type": "object", "properties": { "type": { "const": "thinking" }, "value": { "type": "string" } }, "required": ["type", "value"] },
+        { "type": "object", "properties": { "type": { "const": "cost" }, "value": { "$ref": "#/$defs/CostValue" } }, "required": ["type", "value"] },
+        { "type": "object", "properties": { "type": { "const": "interrupt" }, "value": { "$ref": "#/$defs/InterruptValue" } }, "required": ["type", "value"] }
+      ]
+    },
+    "InitValue": {
+      "description": "First message from UI. status=true indicates readiness to use this protocol; rootDir is the project directory (cwd) for the backend.",
+      "type": "object",
+      "required": ["status", "rootDir"],
+      "properties": {
+        "status": { "type": "boolean", "description": "Must be true. Used instead of a protocol version number." },
+        "rootDir": { "type": "string", "description": "Absolute or relative path to the project root (backend uses this as cwd)." }
+      },
+      "additionalProperties": false
+    },
+    "ReadyValue": {
+      "description": "Sent by backend after init is processed. status=true means the agent is ready to accept queries.",
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "boolean", "description": "true when backend is ready." }
+      },
+      "additionalProperties": false
+    },
+    "StatusValue": {
+      "description": "Backend agent state. Sent during and after a run to indicate busy/thinking/compaction.",
+      "type": "object",
+      "properties": {
+        "busy": { "type": "boolean", "description": "True while the agent is processing a query." },
+        "thinking": { "type": "boolean", "description": "True when extended thinking is enabled." },
+        "compaction": { "type": "boolean", "description": "True when context compaction is in progress." }
+      },
+      "additionalProperties": true
+    },
+    "ToolStartValue": {
+      "description": "Emitted when the agent starts a tool call. name is a short label: list, read, grep, glob, code_search, write.",
+      "type": "object",
+      "required": ["id", "name", "args"],
+      "properties": {
+        "id": { "type": "string", "description": "Tool call id; links to tool_result with same id." },
+        "name": { "type": "string", "description": "Short name: list, read, grep, glob, code_search, write." },
+        "args": { "type": "object", "description": "Arguments passed to the tool." },
+        "data": { "type": ["string", "null"], "description": "Optional human-readable summary (e.g. path or pattern)." }
+      },
+      "additionalProperties": true
+    },
+    "ToolResultValue": {
+      "description": "Emitted when a tool call completes. content shape depends on format.",
+      "type": "object",
+      "required": ["id", "name", "content"],
+      "properties": {
+        "id": { "type": "string", "description": "Tool call id from tool_start." },
+        "name": { "type": "string", "description": "Short tool name." },
+        "content": {
+          "description": "String (error/raw) or array of items. Items can be: string; { path, snippet?, root?, line? }; { file, line? }.",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": {} }
+          ]
+        },
+        "format": {
+          "type": "string",
+          "enum": ["list_files", "read_file", "grep", "glob", "code", "raw", "error"],
+          "description": "How to interpret content: list_files/read_file/grep/glob (path lists), code (code block), raw/error (string)."
+        }
+      },
+      "additionalProperties": true
+    },
+    "CostValue": {
+      "description": "Per-cycle cost and token usage. Sent after a run completes.",
+      "type": "object",
+      "required": ["total_input_tokens", "total_output_tokens", "cost", "context_window_used"],
+      "properties": {
+        "total_input_tokens": { "type": "number" },
+        "total_output_tokens": { "type": "number" },
+        "cache_creation_input_tokens": { "type": "number" },
+        "cache_read_input_tokens": { "type": "number" },
+        "cost": { "type": "string", "description": "e.g. dollar cost string." },
+        "context_window_used": { "type": "string", "description": "e.g. percentage or token count." }
+      },
+      "additionalProperties": true
+    },
+    "InterruptValue": {
+      "description": "Reserved for human-in-the-loop (e.g. edit approval). Not yet sent over stdio.",
+      "type": "object",
+      "properties": {
+        "old_code": { "type": "string" },
+        "new_code": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

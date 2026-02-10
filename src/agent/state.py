@@ -92,7 +92,9 @@ def inject_user_prompt(user_guidelines, root_dir, programming_langs):
        - Use exact paths, not relative or assumed paths
        - Provide specific function/class names when discussing implementations
 
-    3. **Explanation**: Only provide detailed explanations when explicitly requested. Otherwise, assume the user understands the basics and focus on answering their specific question.
+    3. **Explanation**:
+        - Only provide detailed explanations when explicitly requested. Otherwise, assume the user understands the basics and focus on answering their specific question.
+        - Do not show any code block in explanation text. Only provide the explanation of the code block.
 
     4. **Code Quality**: When generating code:
        - Ensure it's complete and logically sound

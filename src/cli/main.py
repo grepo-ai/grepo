@@ -1,7 +1,7 @@
 import os
 import sys
 import threading
-from collections import deque
+import queue
 from queue import SimpleQueue
 
 import click  # ty:ignore[unresolved-import]
@@ -60,7 +60,7 @@ def _main():
     lock = threading.Lock()
     query_queue = SimpleQueue()
     stop_event = threading.Event()
-    output_queue = deque()
+    output_queue = queue.Queue()
     buffer = ""
 
     # Create split regions for query processing and input bar

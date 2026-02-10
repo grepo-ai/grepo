@@ -1,10 +1,10 @@
 import json
 import os
+import queue
 import re
 import threading
 import time
 import uuid
-from collections import deque
 from pathlib import Path
 from typing import Any, Optional, TypedDict, Union
 
@@ -70,7 +70,7 @@ class Agent:
         root_dir: str,
         model: str,
         provider: str,
-        output_queue: deque,
+        output_queue: queue.Queue,
         tools: list,
         schema: GlobalState,
         checkpointer: SqliteSaver,
@@ -96,7 +96,7 @@ class Agent:
         self._cycle_stats: dict = {}
         self._stop_thread: threading.Event = threading.Event()
         self._last_message_id: tuple = (-1, None)
-        self._output_queue: deque = output_queue
+        self._output_queue: queue.Queue = output_queue
         self._ui_renders: dict = {}
         self._active_auto_compaction: bool = False
         self._cycle_context_summary_cost: float = 0
@@ -125,10 +125,11 @@ class Agent:
         return self._config
 
     def _get_config(self):
+        callbacks = [langfuse_handler] if langfuse_handler is not None else []
         return {
             "configurable": {"thread_id": self.session_uuid},
             "recursion_limit": 70,
-            "callbacks": [langfuse_handler],
+            "callbacks": callbacks,
         }
 
     @property
@@ -581,7 +582,7 @@ class Agent:
                 )
 
                 # TODO: Replace 10k by actual context window size but minus 20K avoid context bloating
-                if session_context_size > 10000 or float(
+                if session_context_size > 100000 or float(
                     cycle_cost["context_window_used"][:-1]
                 ) >= float(f"{95:.2f}"):
                     # Render an indicator that context compaction is in process
@@ -828,7 +829,7 @@ class Agent:
                     if isinstance(ai_messages_content, list):
                         for index, msg in enumerate(ai_messages_content):
                             if msg.get("thinking"):
-                                self._output_queue.append(
+                                self._output_queue.put(
                                     (
                                         f"\n[dim]Thinking -> {msg['thinking']}[/]\n",
                                         console,
@@ -836,7 +837,7 @@ class Agent:
                                 )
 
                             elif msg.get("text"):
-                                self._output_queue.append(
+                                self._output_queue.put(
                                     (f"\n[#FCFCFC]●[/] {msg['text']}\n", console)
                                 )
 
@@ -845,7 +846,7 @@ class Agent:
                             f"`●` {ai_messages_content}\n",
                             code_theme=code_block_md_theme,
                         )
-                        self._output_queue.append((markdown_text, console))
+                        self._output_queue.put((markdown_text, console))
 
                 # Stream chunk type 2: Tool response
                 elif stream_message.get("tools"):
@@ -861,7 +862,7 @@ class Agent:
                                 id=tool_id, values="[#FC7C7C]No files found[/]"
                             )
 
-                            self._output_queue.append(
+                            self._output_queue.put(
                                 (parent_tree.get_tree(id=tool_id), console)
                             )
 
@@ -871,7 +872,7 @@ class Agent:
                             )
                             parent_tree.add_leaf(id=tool_id, values=files_paths)
 
-                            self._output_queue.append(
+                            self._output_queue.put(
                                 (parent_tree.get_tree(id=tool_id), console)
                             )
 
@@ -885,7 +886,7 @@ class Agent:
                                 id=tool_id,
                                 values=[f"[#FC7C7C]({tool_message})[/]"],
                             )
-                            self._output_queue.append(
+                            self._output_queue.put(
                                 (parent_tree.get_tree(id=tool_id), console)
                             )
                             continue
@@ -910,7 +911,7 @@ class Agent:
                                 )
                             ],
                         )
-                        self._output_queue.append(
+                        self._output_queue.put(
                             (parent_tree.get_tree(id=tool_id), console)
                         )
 
@@ -921,7 +922,7 @@ class Agent:
                                 id=tool_id,
                                 values=["[#FC7C7C]Error: Not found[/]"],
                             )
-                            self._output_queue.append(
+                            self._output_queue.put(
                                 (parent_tree.get_tree(id=tool_id), console)
                             )
                             continue
@@ -958,7 +959,7 @@ class Agent:
                             id=sub_tree_grep_id,
                             values=leaf_values,
                         )
-                        self._output_queue.append(
+                        self._output_queue.put(
                             (parent_tree.get_tree(id=tool_id), console)
                         )
 
@@ -979,7 +980,7 @@ class Agent:
                             ],
                         )
 
-                        self._output_queue.append(
+                        self._output_queue.put(
                             (parent_tree.get_tree(id=tool_id), console)
                         )
 
@@ -1028,7 +1029,7 @@ class Agent:
                             id=sub_tree_glob_id,
                             values=leaf_values,
                         )
-                        self._output_queue.append(
+                        self._output_queue.put(
                             (parent_tree.get_tree(id=tool_id), console)
                         )
 
@@ -1036,13 +1037,13 @@ class Agent:
                 elif stream_message.get("__interrupt__"):
                     old_code = stream_message["__interrupt__"][0].value["old_code"]
                     new_code = stream_message["__interrupt__"][0].value["new_code"]
-                    self._output_queue.append((old_code, console))
+                    self._output_queue.put((old_code, console))
 
-                    self._output_queue.append(
+                    self._output_queue.put(
                         ("[#CFCFCF]----------Code Diff------------[/]", console)
                     )
 
-                    self._output_queue.append((new_code, console))
+                    self._output_queue.put((new_code, console))
 
                     human_approval = console.input("Enter Yes/No to accept/reject:")
 
@@ -1097,7 +1098,7 @@ class Agent:
 def initiate_agent(
     root_dir: str,
     session_uuid: str,
-    output_queue: deque,
+    output_queue: queue.Queue,
     model_provider: str,
     model: str,
     preprocessed_data: dict,

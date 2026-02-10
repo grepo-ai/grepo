@@ -1,7 +1,6 @@
 import queue
 import threading
 import time
-from collections import deque
 from queue import SimpleQueue
 
 from rich.padding import Padding
@@ -19,7 +18,7 @@ def bg_query_processing(
     preprocessed_data,
     stop_event: threading.Event,
     query_queue: SimpleQueue,
-    output_queue: deque,
+    output_queue: queue.Queue,
     lock: threading.Lock,
     model="claude-sonnet-4-5-20250929",
     model_provider="anthropic",
@@ -61,7 +60,7 @@ def bg_query_processing(
                     continue
 
                 else:
-                    output_queue.append(
+                    output_queue.put(
                         (Text(f"\n{query} \n", style="#FAFAFA on #383838"), console)
                     )
                     agent.invoke(
@@ -77,29 +76,18 @@ def bg_query_logs_processing(
     renderable_splits,
     console,
     stop_event: threading.Event,
-    output_queue: deque,
+    output_queue: queue.Queue,
     lock: threading.Lock,
 ):
     while not stop_event.is_set():
         try:
-            # Process all available messages from the deque
-            while len(output_queue) > 0:
-                message, msg_console = output_queue.popleft()
-                if message:
-                    # Print logs directly to console above the Live region
-                    # (This approach works instead of rendering logs inside a separate container/layout which
-                    # introduces extreme complexities of auto-scrolling, making sure the right logs are rendered
-                    # in active terminal view, also its IMPORTANT to know `console` being used here
-                    # is same that is passed to Live since the threads don't have access to live_region, we need to pass it or use the console
-                    # that's already passed (which is the same in this case), so we dont need to do live.console.print()[source: Rich docs])
-                    console.print(
-                        Padding(message, (0, 0, 0, 1))
-                    )  # (top, right, bottom, left)
-
-        except IndexError:
-            pass
-
-        time.sleep(0.1)
+            message, msg_console = output_queue.get(timeout=0.1)
+            if message:
+                console.print(
+                    Padding(message, (0, 0, 0, 1))
+                )  # (top, right, bottom, left)
+        except queue.Empty:
+            continue
 
 
 def compaction_status_updates(

@@ -19,7 +19,7 @@ dependencies = [
   "diff-match-patch>=20241021",
   "langchain>=0.3.27",
   "langchain-anthropic>=0.3.18",
-  "langfuse>=3.3.2",
+  "langfuse>=3.14.1",
   "langgraph>=0.6.4",
   "langgraph-checkpoint-sqlite>=2.0.11",
   "pyfiglet>=1.0.3",
@@ -34,6 +34,7 @@ dependencies = [
 
 [project.scripts]
 grepo = "cli.main:_main"
+grepo-stdio = "cli.backend_stdio:main"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

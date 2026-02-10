@@ -1,39 +1,46 @@
 import os
-import glob
 import re
-from typing import Annotated, Optional
-from typing_extensions import TypedDict
+from typing import Annotated
 
-from langchain_core.tools import tool, InjectedToolCallId
-from langchain_core.messages import ToolMessage
+from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
 
-from src.agent.state import GlobalState
-from langgraph.types import Command, interrupt
-from agent.utils import apply_diff, generate_diff
+from agent.state import GlobalState
 
 
 @tool
 def grep(
-    query: str,
+    pattern: str,
+    state: Annotated[GlobalState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId],
 ) -> list[tuple[str, int, str]]:
     """
-    This function performs a recursive search on all directories/sub-directories from root directory and returns all matches found for the given query along
-    with file file_paths for each query match else returns empty list if no match is found
+    This function performs a recursive search on all directories/sub-directories from root directory and returns all matches found for the given pattern, tool
+    returns file_path, line number and matched line for each match of the pattern else it returns empty list if no match is found
     """
 
-    file_paths = glob.glob(f"{os.getcwd()}/**/*.py", recursive=True)
+    pattern_matches = []
+    for root, dirs, files in os.walk(state["root_dir"]):
+        if (
+            "." in root or root in state["git_ignored_files"]
+        ):  # skip .dir names eg: .venv and if dir is in .gitignore
+            continue
 
-    query_matches = []
-    for path in file_paths:
-        with open(path, "r") as file:
-            for line_number, line in enumerate(file, 1):
-                result = re.search(query, line)
-                if result:
-                    query_matches.append((path, line_number, line))
+        for file_name in files:
+            if file_name in state["git_ignored_files"]:
+                continue
 
-    if query_matches is not None:
-        return query_matches
+            file_extension = os.path.splitext(file_name)[1]
+            if file_extension and file_extension.strip(".") in state["languages"]:
+                with open(os.path.join(root, file_name), "r") as file:
+                    for line_number, line in enumerate(file, 1):
+                        result = re.search(pattern, line)
+                        if result:
+                            pattern_matches.append(
+                                (os.path.join(root, file_name), line_number, line)
+                            )
 
-    raise ValueError("No matches found for the query.")
+    if pattern_matches:
+        return pattern_matches
+
+    raise ValueError("No matches found for the pattern.")

@@ -1,23 +1,58 @@
-import uuid
-import sqlite3
+import json
 import os
-import tempfile
 import shutil
+import tempfile
+import uuid
+from enum import Enum
 
-
-from langgraph.checkpoint.sqlite import SqliteSaver
 import diff_match_patch as dmp_module
+from langgraph.checkpoint.sqlite import SqliteSaver
 
 
-def get_checkpointer():
-    checkpointer = SqliteSaver(sqlite3.connect("grepo.db", check_same_thread=False))
+class ProviderMappingAPI(Enum):
+    ANTHROPIC_API_KEY = "ANTHROPIC_API_KEY"
+    OPENAI_API_KEY = "OPENAI_API_KEY"
+
+
+MODEL_MAPPING = {
+    "Anthropic Sonnet 4.5": "ANTHROPIC_API_KEY",
+    "Anthropic Sonnet 4": "ANTHROPIC_API_KEY",
+    "Anthropic Haiku 4.5": "ANTHROPIC_API_KEY",
+}
+
+
+def preprocess_dir(dir_path):
+    # Get all programming languages used in the project and .gitignore'd files
+    data_dict = {"prog_langs": [], "git_ignored_files": []}
+
+    for root, dirs, files in os.walk(dir_path):
+        if "." in root:  # skip .dir names eg: .venv
+            continue
+
+        # Check each file in the each root dir
+        for file in files:
+            if file == ".gitignore":
+                with open(os.path.join(root, file), "r") as git_file:
+                    for line_number, line in enumerate(git_file, 1):
+                        if line.strip() and not line.startswith("#"):
+                            data_dict["git_ignored_files"].append(line.strip())
+
+            file_extension = os.path.splitext(file)[1]
+            if file_extension and file_extension in [".py", ".js", ".ts"]:
+                if file_extension.strip(".") not in data_dict["prog_langs"]:
+                    data_dict["prog_langs"].append(file_extension.strip("."))
+
+    return data_dict
+
+
+def get_checkpointer(root_dir, sqlite_con):
+    checkpointer = SqliteSaver(sqlite_con)
     return checkpointer
 
 
 # Create chat sessions
 def generate_session_uuid():
     thread_uuid = uuid.uuid4().hex
-    print(f"------ New session created with uuid {thread_uuid} ----")
     return thread_uuid
 
 
@@ -145,10 +180,30 @@ def construct_code(read_file_data, truncate=False):
     return code_block + " ....", file_path
 
 
-def format_grep_results(results_list):
+def format_grep_results(grep_tool_results):
+    grep_tool_output = json.loads(grep_tool_results)
     formatted_res = []
 
-    for res in results_list:
+    for res in grep_tool_output:
         # slice_res = res[2][:10] if len(res[2]) > 10 else res[2]
         formatted_res.append((res[0], f":{res[1]}"))
     return formatted_res
+
+
+def format_glob_results(path_list):
+    glob_tool_output = json.loads(path_list)
+
+    if isinstance(glob_tool_output, list):
+        return glob_tool_output
+
+    return
+
+
+def format_list_files_results(path_list):
+    try:
+        list_tool_output = json.loads(path_list)
+    except json.JSONDecodeError:
+        return path_list, 0
+
+    if isinstance(list_tool_output, list):
+        return list_tool_output, len(list_tool_output)

@@ -1,0 +1,22 @@
+/** Match backend cli/utils.py color_palette and grepo_md_theme */
+export const colors = {
+  green: "#7CFCA7",
+  red: "#FC7C7C",
+  cyan: "#60FCF5",
+  pink: "#FA5CB3",
+  lightPink: "#F47AFF",
+  purple: "#4A4EFF",
+  orange: "#F27F4E",
+  lightPurple: "#B6C8FA",
+  white: "#FCFCFC",
+  inputBarGreen: "#69FFB4",
+  introTextPink: "#FC69FF",
+  grey: "#969696",
+  accent: "#69FFB4",
+  inputBarBg: "#F7F7F7",
+  dim: "#CAC7FF",
+  paletteHighlight: "#E896FF",
+  userMessage: "#FA64DE",
+  spinner: "#FFC07D",
+  thinkingText: "#B8B8B8",
+} as const;

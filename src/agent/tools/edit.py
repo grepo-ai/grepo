@@ -1,17 +1,12 @@
-import os
-import glob
-import re
 from typing import Annotated, Optional
-from typing_extensions import TypedDict
 
-from langchain_core.tools import tool, InjectedToolCallId
 from langchain_core.messages import ToolMessage
+from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
-
-from src.agent.state import GlobalState
 from langgraph.types import Command, interrupt
-from agent.utils import apply_diff, generate_diff
 
+from agent.state import GlobalState
+from agent.utils import apply_diff, generate_diff
 
 EDIT_TOOL_DESCRIPTION = """
 
@@ -44,7 +39,7 @@ def edit_file(
     file_path: str,
     state: Annotated[GlobalState, InjectedState],
     tool_call_id: Annotated[str, InjectedToolCallId],
-) -> Command:
+) -> Command:  # ty:ignore[invalid-return-type]
     # Highlighted and formatted diff text
     old_highlight, new_highlight = generate_diff(
         old_code, new_code, file_path, highlight=True
@@ -53,7 +48,8 @@ def edit_file(
     human_approval = interrupt({"old_code": old_highlight, "new_code": new_highlight})
 
     if human_approval["option"].lower() in ("yes", "y"):
-        result = apply_diff(file_path, old_code, new_code)
+        # TODO: Improve edit functionality
+        apply_diff(file_path, old_code, new_code)
 
         update_data = {
             "messages": [

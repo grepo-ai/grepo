@@ -1,24 +1,16 @@
 import os
-import glob
-import re
-import json
 from typing import Annotated, Optional
-from typing_extensions import TypedDict
 
-from langchain_core.tools import tool, InjectedToolCallId
-from langchain_core.messages import ToolMessage
+from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.prebuilt import InjectedState
-from langgraph.types import Command, interrupt
 
-
-from src.agent.state import GlobalState
-from src.code_parser import CodeWalker, ParserLanguages
-
+from agent.state import GlobalState
+from code_parser import CodeWalker, ParserLanguages, language_map
 
 CODE_BLOCK_TOOL_DESCRIPTION = """
 
     This tool is useful if you need to extract a code block definition by its name from the file.
-    Tool input requires a file path for single file search.
+    Tool input requires a file path for search.
     code block name could be a Class, Function, Method name this tool makes it easy to fetch a code block definition.
 
     ## When to use this tool:
@@ -28,7 +20,8 @@ CODE_BLOCK_TOOL_DESCRIPTION = """
     4. Tool returns a list of tuples where each tuple consists of a file path, code block name and code definition.
 
     ## Important:
-    1. This tool will fail if no code block name is provided.
+    1. This tool will fail if no code block name or file path is provided.
+    2. file path should be a valid code file with an extension.
 """
 
 
@@ -45,8 +38,16 @@ def get_code_block(
         raise ValueError("code_block_name cannot be empty")
 
     if file_path:
-        # TODO: Infer language from graph state variables
-        code_walker = CodeWalker(ParserLanguages.PYTHON.value)
+        file_extension = os.path.splitext(file_path)[1]
+
+        if not file_extension:
+            raise ValueError("file_path is not a code file")
+
+        source_code_lang = language_map.get(file_extension.strip("."))
+        if not source_code_lang:
+            raise ValueError("Not a valid code file with this extension")
+
+        code_walker = CodeWalker(getattr(ParserLanguages, f"{source_code_lang}").value)
 
         encoded_code = CodeWalker.encode_code(file_paths=[file_path])[
             os.path.basename(file_path)
@@ -55,20 +56,21 @@ def get_code_block(
         # Construct code map with extracted code blocks (classes, functions and methods)
         symbols_map = code_walker.extract_symbols(encoded_code, file_path)
 
-        for klass in symbols_map["classes"]:
+        for klass in symbols_map.get("classes", []):
             if klass["class_name"] == code_block_name:
                 return klass["class_code"]
 
-            for method in klass["class_methods"]:
+            for method in klass.get("class_methods", []):
                 if method["method_name"] == code_block_name:
                     return method["method_code"]
 
-        for function in symbols_map["functions"]:
+        for function in symbols_map.get("functions", []):
             if function["function_name"] == code_block_name:
                 return function["function_code"]
 
         raise ValueError("No code definition found in this file.")
 
+    raise ValueError("Provide a valid file_path argument")
 
-# TODO: Maybe consider doing grep from this code tool as well for code block search across codebase
+
 # Idea: Multi-threaded tree cursor based traversal of each file.

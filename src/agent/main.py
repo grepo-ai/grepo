@@ -1,84 +1,198 @@
-import os
-import glob
-import re
-import uuid
 import json
-import time
+import os
+import queue
+import re
 import threading
-from typing import Annotated, Union, Optional
-from typing_extensions import TypedDict
+import time
+import uuid
+from pathlib import Path
+from typing import Any, Optional, TypedDict, Union
 
-
-from langgraph.graph.state import CompiledStateGraph
-from langchain_core.messages import RemoveMessage
-from langchain_core.tools.base import BaseTool
-from langgraph.graph.message import REMOVE_ALL_MESSAGES
-from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.sqlite import SqliteSaver
-
-
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    RemoveMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from langchain_core.tools.base import BaseTool
+from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.prebuilt import create_react_agent
+from langgraph.types import Command
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.style import Style
+from rich.syntax import Syntax
+from rich.text import Text
 
-
-from agent.state import GlobalState
 from agent.llm import LLMInterface
+from agent.state import GlobalState
+from agent.tools import (
+    edit_file,
+    get_code_block,
+    glob,
+    grep,
+    list_files,
+    read_file,
+    write,
+)
+
+# ---- Langfuse ---
+from agent.tracing import langfuse_handler
+from agent.utils import (
+    construct_code,
+    format_glob_results,
+    format_grep_results,
+    format_list_files_results,
+    get_checkpointer,
+)
+from cli.renderables import TreeRender
+from cli.utils import code_block_md_theme, color_palette
+from code_parser import language_map
+
+
+class SessionStats(TypedDict):
+    total_input_tokens: int
+    total_output_tokens: int
+    cache_creation_input_tokens: int
+    cache_read_input_tokens: int
+    session_cost: str | float
+    context_window_used: str | float
+    model_used: str
 
 
 class Agent:
     def __init__(
         self,
-        model,
+        root_dir: str,
+        model: str,
+        provider: str,
+        output_queue: queue.Queue,
         tools: list,
-        schema,
-        checkpointer,
-        system_prompt: str,
+        schema: GlobalState,
+        checkpointer: SqliteSaver,
+        session_uuid: str,
         stream_mode: Union[str, list],
         config: dict = {},
+        preprocessed_env_data: dict = {},
         auto_compact: bool = False,
     ):
-        self.model: Union[ChatAnthropic, None] = model
-        self.system_prompt: SystemMessage = system_prompt
+        self.llm_client = LLMInterface(model=model, llm_provider=provider)
+        self.model_interface: Union[ChatAnthropic, None] = self.llm_client.client()
+        self.system_prompt: SystemMessage = self._get_system_prompt(
+            root_dir, preprocessed_env_data
+        )
         self.tools: list[BaseTool] = tools
         self.state_schema: GlobalState = schema
         self.stream_mode: Optional[list[str]] = stream_mode
         self.checkpointer: SqliteSaver = checkpointer
-        self._config: dict = config
+        self.session_uuid: str = session_uuid
+        self._config: dict = config if config else self._get_config()
         self._compiled_graph: CompiledStateGraph = None
         self.auto_compact: bool = auto_compact
-        self._token_usage: dict = None
-        self._stop_thread = threading.Event()
-        self._last_message_id = (-1, None)
+        self._cycle_stats: dict = {}
+        self._stop_thread: threading.Event = threading.Event()
+        self._last_message_id: tuple = (-1, None)
+        self._output_queue: queue.Queue = output_queue
+        self._ui_renders: dict = {}
+        self._active_auto_compaction: bool = False
+        self._cycle_context_summary_cost: float = 0
+        self._session_context_summary_stats: float = 0
+        self._session_cost_stats: list = []
+
+    def _get_system_prompt(self, root_dir, preprocessed_env_data):
+        agents_md_path = f"{root_dir}/AGENTS.md"
+        user_prompt_guidelines = ""
+
+        if os.path.exists(agents_md_path):
+            user_prompt_guidelines = Path(agents_md_path).read_text(encoding="utf-8")
+
+        languages = ""
+        for lang in preprocessed_env_data["prog_langs"]:
+            languages += f"{language_map.get(lang)}, "
+
+        return self.llm_client.get_system_prompt(
+            user_prompt=user_prompt_guidelines,
+            root_dir=root_dir,
+            programming_langs=languages,
+        )
 
     @property
     def config(self):
         return self._config
 
-    @property
-    def agent_state(self):
-        return self._compiled_graph.get_state(self._config)
+    def _get_config(self):
+        callbacks = [langfuse_handler] if langfuse_handler is not None else []
+        return {
+            "configurable": {"thread_id": self.session_uuid},
+            "recursion_limit": 70,
+            "callbacks": callbacks,
+        }
 
     @property
-    def token_usage(self):
-        return self._token_usage
+    def thinking(self):
+        if self.model_interface:
+            return self.model_interface.thinking
+
+    @thinking.setter
+    def thinking(self, flag: bool):
+        if flag:
+            setattr(
+                self.model_interface,
+                "thinking",
+                {"type": "enabled", "budget_tokens": 2000},
+            )
+        else:
+            setattr(self.model_interface, "thinking", None)
+
+    @property
+    def agent_state(self):
+        return self._compiled_graph.get_state(self._config)  # ty:ignore[invalid-argument-type]
+
+    @property
+    def cycle_stats(self):
+        return self._cycle_stats
+
+    @cycle_stats.setter
+    def cycle_stats(self, stats_dict):
+        self._cycle_stats = stats_dict
 
     def stop_thread(self):
         self._stop_thread.set()
 
-    def get_messages(self):
-        return self._compiled_graph.get_state(self._config).values.get("messages", [])
+    def get_messages(self, llm_messages=False):
+        if llm_messages:
+            return self._compiled_graph.get_state(self._config).values.get(  # ty:ignore[invalid-argument-type]
+                "llm_input_messages", []
+            )
+
+        return self._compiled_graph.get_state(self._config).values.get("messages", [])  # ty:ignore[invalid-argument-type]
+
+    def update_state(self, **kwargs):
+        # Update agent's state with pre-processed data to be accessed during agent loop
+        agent_state = self._compiled_graph
+        agent_state.update_state(
+            self._config,  # ty:ignore[invalid-argument-type]
+            {
+                "languages": kwargs["prog_langs"],
+                "root_dir": kwargs["root_dir"],
+                "git_ignored_files": kwargs["git_ignored_files"],
+            },
+        )
 
     def update_messages(self, messages, compact=False):
         if compact:
             new_messages = [RemoveMessage(id=REMOVE_ALL_MESSAGES), *messages]
-
-        self._compiled_graph.update_state(self._config, {"messages": new_messages})
+            self._compiled_graph.update_state(self._config, {"messages": new_messages})  # ty:ignore[invalid-argument-type]
 
     def clear_session(
         self,
     ):
         self._compiled_graph.update_state(
-            self._config,
+            self._config,  # ty:ignore[invalid-argument-type]
             {
                 "messages": [
                     RemoveMessage(id=REMOVE_ALL_MESSAGES),
@@ -90,11 +204,12 @@ class Agent:
     def format_state_messages(self, all_state_messages):
         formatted_messages = []
 
-        # Calculate total tokens to check if compaction is needed
         for message in all_state_messages:
             # Format messages for generating a summary
             if isinstance(message, HumanMessage):
-                formatted_messages.append(f"<human>{message.content}</human>")
+                formatted_messages.append(
+                    f"<human query>{message.content}</human query>"
+                )
 
             elif isinstance(message, AIMessage):
                 if isinstance(message.content, list):
@@ -103,11 +218,30 @@ class Agent:
                             content.get("text") is not None
                             and content.get("type") == "text"
                         ):
-                            formatted_messages.append(f"<ai>{content['text']}<ai>")
+                            formatted_messages.append(
+                                f"<ai response>{content['text']}</ai response>"
+                            )
+
+                        if content.get("type") == "tool_use":
+                            tool_message = ""
+                            for tool_call in message.tool_calls:
+                                tool_message += (
+                                    f"<tool call>tool_name: {tool_call['name']} -- "
+                                )
+                                for key, value in tool_call["args"].items():
+                                    tool_message += (
+                                        f"arg_name:{key},arg_value:{value}\n"
+                                    )
+                            tool_message += " </tool call>"
+                            formatted_messages.append(tool_message)
+
                 else:
-                    formatted_messages.append(f"<ai>{message.content}</ai>")
+                    formatted_messages.append(
+                        f"<ai response>{message.content}</ai response>"
+                    )
 
             elif isinstance(message, ToolMessage):
+                # Successful tool call response
                 if message.content is not None and "Error:" not in message.content:
                     if isinstance(message.content, list):
                         tool_messages = ""
@@ -121,7 +255,7 @@ class Agent:
                                 tool_messages += tool_message + " "
 
                         formatted_messages.append(
-                            f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
+                            f"<tool response> Tool name: {message.name}\n Tool response:{tool_messages} </tool response>"
                         )
 
                     else:
@@ -140,82 +274,63 @@ class Agent:
                                         tool_messages += tool_message + " "
 
                                 formatted_messages.append(
-                                    f"<tool> Tool name: {message.name}\n Tool response:{tool_messages} </tool>"
+                                    f"<tool response> Tool name: {message.name}\n Tool response:{tool_messages} </tool response>"
                                 )
 
                         # Type of message content is str
                         except json.JSONDecodeError:
                             formatted_messages.append(
-                                f"<tool> Tool name: {message.name}\n Tool response:{message.content} </tool>"
+                                f"<tool response> Tool name: {message.name}\n Tool response:{message.content} </tool response>"
                             )
                             pass
 
+                # Error tool call response
+                elif message.content is not None and "Error:" in message.content:
+                    formatted_messages.append(
+                        f"<tool response> Tool name: {message.name}\n Tool response:{message.content} </tool response>"
+                    )
+
         return formatted_messages
 
-    def session_cost(
-        self, llm_client: LLMInterface, all_state_messages=None, compaction=False
-    ):
-        if all_state_messages is None:
-            all_state_messages = self.get_messages()
-
-        token_usage = {
-            "total_input_tokens": 0,
-            "total_output_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "cache_read_input_tokens": 0,
-            "session_cost": 0.00,
-            "context_window_used": 0.0,
-        }
-
-        token_usage["total_input_tokens"] = 0
-        token_usage["total_output_tokens"] = 0
-        token_usage["cache_creation_input_tokens"] = 0
-        token_usage["cache_read_input_tokens"] = 0
-
-        # Calculate total tokens to check if compaction is needed
-        for message in all_state_messages:
-            if isinstance(message, AIMessage):
-                response_metadata = message.response_metadata["usage"]
-                token_usage["total_input_tokens"] += response_metadata["input_tokens"]
-                token_usage["total_output_tokens"] += response_metadata["output_tokens"]
-                token_usage["cache_creation_input_tokens"] += response_metadata[
-                    "cache_creation_input_tokens"
-                ]
-                token_usage["cache_read_input_tokens"] += response_metadata[
-                    "cache_read_input_tokens"
-                ]
-
-        total_tokens_used = (
-            token_usage["total_input_tokens"]
-            + token_usage["total_output_tokens"]
-            + token_usage["cache_creation_input_tokens"]
-            + token_usage["cache_read_input_tokens"]
+    def session_cost(self):
+        token_usage = SessionStats(
+            total_input_tokens=0,
+            total_output_tokens=0,
+            cache_creation_input_tokens=0,
+            cache_read_input_tokens=0,
+            session_cost=0,
+            context_window_used=0,
+            model_used=self.llm_client.get_model_name(self.llm_client.model),
         )
 
-        cost_per_token = llm_client.cost_per_token
+        for cycle_cost in self._session_cost_stats:
+            token_usage["total_input_tokens"] += cycle_cost["total_input_tokens"]
+            token_usage["total_output_tokens"] += cycle_cost["total_output_tokens"]
+            token_usage["cache_creation_input_tokens"] += cycle_cost[
+                "cache_creation_input_tokens"
+            ]
+            token_usage["cache_read_input_tokens"] += cycle_cost[
+                "cache_read_input_tokens"
+            ]
+            token_usage["session_cost"] += float(cycle_cost["cost"].strip("$"))  # ty:ignore[unsupported-operator]
+            token_usage["context_window_used"] += float(
+                cycle_cost["context_window_used"].strip("%")
+            )  # ty:ignore[unsupported-operator]
 
-        final_total_cost = (
-            token_usage["total_input_tokens"] * cost_per_token["input_token_cost"]
-            + token_usage["total_output_tokens"] * cost_per_token["output_token_cost"]
-            + token_usage["cache_creation_input_tokens"]
-            * cost_per_token["cache_write_cost_5m"]
-            + token_usage["cache_read_input_tokens"] * cost_per_token["cache_read_cost"]
-        )
+        token_usage["context_window_used"] = f"{token_usage['context_window_used']}%"
+        token_usage["total_input_tokens"] += self._session_context_summary_stats
 
-        token_usage["session_cost"] = f"${final_total_cost:.4f}"
-        token_usage["context_window_used"] = (
-            f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
-        )
-
-        if not compaction:
-            self._token_usage = token_usage
+        # Round off final session cost value
+        token_usage["session_cost"] = f"{token_usage['session_cost']:.4f}"
 
         return token_usage
 
-    def calculate_cycle_cost(self, llm_client):
+    def calculate_cycle_cost(self, render: bool = False):
         "This method calculates cost of 1 complete agent loop i.e from human message to AI's final response"
 
+        llm_client = self.llm_client
         all_messages = self.get_messages()
+
         cost_stats = {
             "total_input_tokens": 0,
             "total_output_tokens": 0,
@@ -223,6 +338,7 @@ class Agent:
             "cache_read_input_tokens": 0,
             "cost": 0,
             "context_window_used": 0,
+            "model_used": llm_client.get_model_name(llm_client.model),
         }
 
         for index, message in enumerate(all_messages):
@@ -262,13 +378,178 @@ class Agent:
             + cost_stats["cache_read_input_tokens"] * cost_per_token["cache_read_cost"]
         )
 
+        # Add auto-compaction summary cost to final cycle cost
+        final_total_cost += self._cycle_context_summary_cost
+
+        # Reset after every agent cycle
+        self._cycle_context_summary_cost = 0
+
         cost_stats["cost"] = f"${final_total_cost:.4f}"
         cost_stats["context_window_used"] = (
             f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
         )
 
+        self._cycle_stats = cost_stats
+        self._session_cost_stats.append(cost_stats)
+
+        # Format the final cost usage stats to renderable fortmat
+        if render:
+            usage_stats_keys = {
+                "total_input_tokens": "↑",
+                "total_output_tokens": "↓",
+                "cost": "",
+            }
+
+            renderable_cost_stats = "\n"
+            for key, value in self._cycle_stats.items():
+                if key in [
+                    "cache_creation_input_tokens",
+                    "cache_read_input_tokens",
+                    "model_used",
+                    "context_window_used",
+                ]:
+                    continue
+                renderable_cost_stats += f"{usage_stats_keys.get(key)} {value} "
+
+            return f"[dim]{Text(renderable_cost_stats, (0, 0, 0, 1))}[/]"  # ty:ignore[invalid-argument-type]
+
         return cost_stats
 
+    def context_compaction(self):
+        llm_client = LLMInterface()
+
+        all_messages = self.get_messages()
+
+        # Calculate cost (in $) of session and context (%) used so far
+        cycle_cost = self.cycle_stats
+        if not cycle_cost:
+            return
+
+        session_context_size = (
+            cycle_cost["total_input_tokens"]
+            + cycle_cost["total_output_tokens"]
+            + cycle_cost["cache_creation_input_tokens"]
+            + cycle_cost["cache_read_input_tokens"]
+        )
+
+        # Run this until context frees up withing the acceptable context window range
+        if session_context_size > 10000 or float(
+            cycle_cost["context_window_used"][:-1]
+        ) >= float(f"{95:.2f}"):
+            # Render a UI indicator that context compaction is in process
+            self._active_auto_compaction = True
+
+            print("--- cycle costs BEFORE compaction ---")
+            print(cycle_cost)
+            print("------ Attempting Compaction -----")
+
+            # Compact only messages upto last AIMessage and leave remaining messages as it is in state
+            last_message = None
+            last_message_index = None
+
+            for index, msg in enumerate(reversed(all_messages)):
+                if isinstance(msg, AIMessage):
+                    last_message = msg
+                    last_message_index = index
+                    break
+
+            has_tool_calls = (
+                hasattr(last_message, "tool_calls")
+                and last_message.tool_calls
+                and len(last_message.tool_calls) > 0
+            )
+
+            # We only consider messages for compaction till last message with no active tool calls so for remaining messages
+            # we simply append them to agent's context as it during context re-write
+            if last_message_index is not None and last_message_index > 0:
+                remaining_messages = all_messages[-last_message_index:]
+                all_messages = all_messages[:-last_message_index]
+
+            elif last_message_index is not None and last_message_index == 0:
+                remaining_messages = []
+
+            if last_message is not None and not has_tool_calls:
+                formatted_messages = self.format_state_messages(all_messages)
+                generated_summary = llm_client.generate_summary(
+                    "\n".join(formatted_messages),
+                    used_context_size=session_context_size,
+                )
+
+                # Update the values of tokens in generated summary message as we are resetting token count
+                # The values in current response is coming from separate LLM call to generate summary so it will
+                # result in incorrect token calculation during subsequent auto-compaction run
+                pre_compaction_context_tokens = generated_summary.response_metadata[
+                    "usage"
+                ]["input_tokens"]
+
+                generated_summary.usage_metadata["total_tokens"] = (
+                    generated_summary.usage_metadata["output_tokens"]
+                )
+                generated_summary.response_metadata["usage"]["input_tokens"] = 0
+                generated_summary.usage_metadata["input_tokens"] = 0
+
+                rewrite_messages = [
+                    HumanMessage(content="Summary of the entire conversation."),
+                    generated_summary,
+                    *remaining_messages,
+                ]
+
+                # Rewrite the message history and update with a summary of previous messages + any HumanMessage
+                self.update_messages(
+                    messages=rewrite_messages,
+                    compact=True,
+                )
+
+                # Reset the last message index (TODO: Check Linear ticket GREP-56)
+                self._last_message_id = (-1, None)
+                print("------ Compaction Completed ------")
+
+                # update token usage stats after compaction
+                cost_stats = {
+                    "total_input_tokens": generated_summary.response_metadata["usage"][
+                        "input_tokens"
+                    ],
+                    "total_output_tokens": generated_summary.response_metadata["usage"][
+                        "output_tokens"
+                    ],
+                    "cost": 0,
+                    "context_window_used": 0,
+                }
+
+                cost_per_token = llm_client.cost_per_token
+
+                final_total_cost = (
+                    cost_stats["total_input_tokens"]
+                    * cost_per_token["input_token_cost"]
+                    + cost_stats["total_output_tokens"]
+                    * cost_per_token["output_token_cost"]
+                )
+
+                cost_stats["cost"] = f"${final_total_cost:.4f}"
+
+                # Calculate cost (in $) and context window (%) used for this cycle
+                total_tokens_used = (
+                    cost_stats["total_input_tokens"] + cost_stats["total_output_tokens"]
+                )
+
+                cost_stats["context_window_used"] = (
+                    f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
+                )
+
+                print("--- cycle costs AFTER compaction ---")
+                print(cost_stats)
+
+                # Append the latest context compaction cost
+                self._cycle_context_summary_cost += (
+                    pre_compaction_context_tokens * cost_per_token["input_token_cost"]
+                )
+
+                self._session_context_summary_stats += pre_compaction_context_tokens
+
+            # UI compaction indicator flag
+            self._active_auto_compaction = False
+
+    # Deprecated: Compaction logic
     def auto_compact_context(self):
         """
         Compaction automatically happens when the chat session is just about to reach context window size
@@ -289,19 +570,26 @@ class Agent:
                 formatted_messages = agent.format_state_messages(all_messages)
 
                 # Calculate cost (in $) of session and context (%) used so far
-                token_usage = agent.session_cost(
-                    llm_client, all_messages, compaction=True
-                )
+                cycle_cost = agent.cycle_stats
+                if not cycle_cost:
+                    continue
 
-                # TODO: Check if cache_read/ cache_create tokens are counted in context window
                 session_context_size = (
-                    token_usage["total_input_tokens"]
-                    + token_usage["cache_creation_input_tokens"]
-                    + token_usage["cache_read_input_tokens"]
+                    cycle_cost["total_input_tokens"]
+                    + cycle_cost["total_output_tokens"]
+                    + cycle_cost["cache_creation_input_tokens"]
+                    + cycle_cost["cache_read_input_tokens"]
                 )
 
                 # TODO: Replace 10k by actual context window size but minus 20K avoid context bloating
-                if session_context_size > 10000:
+                if session_context_size > 100000 or float(
+                    cycle_cost["context_window_used"][:-1]
+                ) >= float(f"{95:.2f}"):
+                    # Render an indicator that context compaction is in process
+                    agent._active_auto_compaction = True
+
+                    print("---- cycle costs before compaction ----")
+                    print(cycle_cost)
                     print("------ Attempting Compaction -----")
                     # Compact only when agent loop has ended and there are no tool calls remaining
                     last_message = agent.get_messages()[-1]
@@ -312,7 +600,7 @@ class Agent:
                         and not last_message.tool_calls
                     ):
                         generated_summary = llm_client.generate_summary(
-                            "\n".join(formatted_messages)
+                            "\n".join(formatted_messages), 0
                         )
 
                         # TODO: Handle case when new messages might arrive while compaction is happening and we have not added those
@@ -323,16 +611,70 @@ class Agent:
                         agent.update_messages(
                             messages=[
                                 HumanMessage(
-                                    content="Generate a summary of the entire conversation."
+                                    content="Summary of the entire conversation."
                                 ),
                                 generated_summary,
                             ],
                             compact=True,
                         )
+
+                        # Reset the last message index (TODO: Check Linear ticket GREP-56)
+                        agent._last_message_id = (-1, None)
                         print("------ Compaction Completed ------")
 
-                # Poll every 10 secs and check if compaction is required (keeping it time based for now to simply logic)
-                time.sleep(10)
+                        # Update the cost stats after compaction
+                        cost_stats = {
+                            "total_input_tokens": generated_summary.response_metadata[
+                                "usage"
+                            ]["input_tokens"],
+                            "total_output_tokens": generated_summary.response_metadata[
+                                "usage"
+                            ]["output_tokens"],
+                            "cache_creation_input_tokens": generated_summary.response_metadata[
+                                "usage"
+                            ]["cache_creation_input_tokens"],
+                            "cache_read_input_tokens": generated_summary.response_metadata[
+                                "usage"
+                            ]["cache_read_input_tokens"],
+                            "cost": 0,
+                            "context_window_used": 0,
+                        }
+
+                        cost_per_token = llm_client.cost_per_token
+
+                        final_total_cost = (
+                            cost_stats["total_input_tokens"]
+                            * cost_per_token["input_token_cost"]
+                            + cost_stats["total_output_tokens"]
+                            * cost_per_token["output_token_cost"]
+                            + cost_stats["cache_creation_input_tokens"]
+                            * cost_per_token["cache_write_cost_5m"]
+                            + cost_stats["cache_read_input_tokens"]
+                            * cost_per_token["cache_read_cost"]
+                        )
+
+                        cost_stats["cost"] = f"${final_total_cost:.4f}"
+
+                        # Calculate cost (in $) and context window (%) used for this cycle
+                        total_tokens_used = (
+                            cost_stats["total_input_tokens"]
+                            + cost_stats["total_output_tokens"]
+                            + cost_stats["cache_creation_input_tokens"]
+                            + cost_stats["cache_read_input_tokens"]
+                        )
+
+                        cost_stats["context_window_used"] = (
+                            f"{(total_tokens_used / llm_client._context_window_size) * 100:.2f}%"
+                        )
+
+                        agent.calculate_cycle_cost()
+                        print("------ cycle costs after compaction ------")
+                        print(agent.cycle_stats)
+
+                agent._active_auto_compaction = False
+
+                # Poll every 5 secs and check if compaction is required (keeping it time based for now to simplify logic)
+                time.sleep(5)
 
         if self.auto_compact:
             # Run compaction in background thread
@@ -343,17 +685,35 @@ class Agent:
             )
             compaction_thread.start()
 
+    def custom_pre_model_hook(self):
+        def pre_model_hook(state):
+            self.context_compaction()
+            return {
+                "llm_input_messages": self.get_messages(),
+                "messages": [
+                    RemoveMessage(id=REMOVE_ALL_MESSAGES),
+                    *self.get_messages(),
+                ],
+            }
+
+        return pre_model_hook
+
     def _create(self):
         self._compiled_graph = create_react_agent(
-            self.model,
+            self.model_interface,  # ty:ignore[invalid-argument-type]
             tools=self.tools,
-            state_schema=self.state_schema,
+            state_schema=self.state_schema,  # ty:ignore[invalid-argument-type]
             checkpointer=self.checkpointer,
             prompt=self.system_prompt,
+            pre_model_hook=self.custom_pre_model_hook(),
         )
 
         # Run auto-compaction in background
-        self.auto_compact_context()
+        # self.auto_compact_context()
+
+        # --- Text formatting ---
+        console = Console()
+        self._ui_renders["console"] = console
 
         return self._compiled_graph
 
@@ -361,5 +721,408 @@ class Agent:
         # Returns a new generator on each new invocation of user input
         # simply iterate over generator object to get stream updates
         return self._compiled_graph.stream(
-            input=input, config=self._config, stream_mode=self.stream_mode
+            input=input,
+            config=self._config,  # ty:ignore[invalid-argument-type]
+            stream_mode=self.stream_mode,  # ty:ignore[invalid-argument-type]
         )
+
+    def invoke(
+        self,
+        renderable_splits,
+        human_input,
+    ):
+        console = self._ui_renders["console"]
+
+        messages = [HumanMessage(content=human_input)]
+
+        # --- while loop ensures we have ended one complete cycle of agent inovcation ---
+        input_type = {"messages": messages}
+        agent_cycle_active = True
+
+        while agent_cycle_active:
+            renderable_splits.update_spinner(spin_it=True)
+
+            running_agent = self.stream(
+                input=input_type,
+            )
+            parent_tree = TreeRender()
+            sub_tree_grep_id = uuid.uuid4().hex
+            sub_tree_glob_id = uuid.uuid4().hex
+
+            for stream_message in running_agent:
+                # Stream chunk type 1: Agent response
+                if stream_message.get("agent"):
+                    ai_message = stream_message["agent"]["messages"][0]
+                    ai_messages_content = stream_message["agent"]["messages"][0].content
+
+                    # Render Tree objects if the LLM response has any subsequent tool calls
+                    if isinstance(ai_message, AIMessage) and hasattr(
+                        ai_message, "tool_calls"
+                    ):
+                        for tool_call in ai_message.tool_calls:
+                            if tool_call.get("name") == "list_files":
+                                render_data = re.sub(
+                                    r"\\([^\w\s])",
+                                    r"\1",
+                                    tool_call.get("args", {}).get("dir_path"),
+                                )
+                                parent_tree.build_tree(
+                                    id=tool_call.get("id"),
+                                    name="list",
+                                    data=render_data,
+                                )
+
+                            elif tool_call.get("name") == "read_file":
+                                parent_tree.build_tree(
+                                    id=tool_call.get("id"),
+                                    name="read",
+                                )
+
+                            elif tool_call.get("name") == "glob":
+                                render_data = re.sub(
+                                    r"\\([^\w\s])",
+                                    r"\1",
+                                    tool_call.get("args", {}).get("pattern"),
+                                )
+                                parent_tree.build_tree(
+                                    id=tool_call.get("id"),
+                                    name="glob",
+                                    data=render_data,
+                                )
+
+                            elif tool_call.get("name") == "grep":
+                                render_data = re.sub(
+                                    r"\\([^\w\s])",
+                                    r"\1",
+                                    tool_call.get("args", {}).get("pattern"),
+                                )
+                                parent_tree.build_tree(
+                                    id=tool_call.get("id"),
+                                    name="grep",
+                                    data=render_data,
+                                )
+
+                            elif tool_call.get("name") == "get_code_block":
+                                render_data = re.sub(
+                                    r"\\([^\w\s])",
+                                    r"\1",
+                                    tool_call.get("args", {}).get("file_path"),
+                                )
+                                parent_tree.build_tree(
+                                    id=tool_call.get("id"),
+                                    name="code_search",
+                                    data=render_data,
+                                )
+
+                            elif tool_call.get("name") == "write":
+                                render_data = re.sub(
+                                    r"\\([^\w\s])",
+                                    r"\1",
+                                    tool_call.get("args", {}).get("pathname"),
+                                )
+                                parent_tree.build_tree(
+                                    id=tool_call.get("id"),
+                                    name="write",
+                                    data=render_data,
+                                )
+
+                    if isinstance(ai_messages_content, list):
+                        for index, msg in enumerate(ai_messages_content):
+                            if msg.get("thinking"):
+                                self._output_queue.put(
+                                    (
+                                        f"\n[dim]Thinking -> {msg['thinking']}[/]\n",
+                                        console,
+                                    )
+                                )
+
+                            elif msg.get("text"):
+                                self._output_queue.put(
+                                    (f"\n[#FCFCFC]●[/] {msg['text']}\n", console)
+                                )
+
+                    else:
+                        markdown_text = Markdown(
+                            f"`●` {ai_messages_content}\n",
+                            code_theme=code_block_md_theme,
+                        )
+                        self._output_queue.put((markdown_text, console))
+
+                # Stream chunk type 2: Tool response
+                elif stream_message.get("tools"):
+                    # Check type of tool and populate tree alerts accordingly
+                    tool_name = stream_message["tools"]["messages"][0].name
+                    tool_message = stream_message["tools"]["messages"][0].content
+                    tool_id = stream_message["tools"]["messages"][0].tool_call_id
+
+                    # Tool: List files
+                    if tool_name == "list_files":
+                        if "Error: ValueError" in tool_message:
+                            parent_tree.add_leaf(
+                                id=tool_id, values="[#FC7C7C]No files found[/]"
+                            )
+
+                            self._output_queue.put(
+                                (parent_tree.get_tree(id=tool_id), console)
+                            )
+
+                        else:
+                            files_paths, total_files = format_list_files_results(
+                                tool_message
+                            )
+                            parent_tree.add_leaf(id=tool_id, values=files_paths)
+
+                            self._output_queue.put(
+                                (parent_tree.get_tree(id=tool_id), console)
+                            )
+
+                    # Tool: Read file
+                    elif tool_name == "read_file":
+                        if tool_message is None:
+                            continue
+
+                        if tool_message.startswith("Error:"):
+                            parent_tree.add_leaf(
+                                id=tool_id,
+                                values=[f"[#FC7C7C]({tool_message})[/]"],
+                            )
+                            self._output_queue.put(
+                                (parent_tree.get_tree(id=tool_id), console)
+                            )
+                            continue
+
+                        read_file_data = json.loads(tool_message)
+                        code_snippet, file_path = construct_code(
+                            read_file_data, truncate=True
+                        )
+
+                        parent_tree.add_leaf(
+                            id=tool_id,
+                            values=[
+                                (
+                                    file_path,
+                                    Text(
+                                        file_path,
+                                        style=Style(
+                                            underline=False,
+                                            color=color_palette["light-purple"],
+                                        ),
+                                    ),
+                                )
+                            ],
+                        )
+                        self._output_queue.put(
+                            (parent_tree.get_tree(id=tool_id), console)
+                        )
+
+                    # Tool: Grep
+                    elif tool_name == "grep":
+                        if tool_message.startswith("Error:"):
+                            parent_tree.add_leaf(
+                                id=tool_id,
+                                values=["[#FC7C7C]Error: Not found[/]"],
+                            )
+                            self._output_queue.put(
+                                (parent_tree.get_tree(id=tool_id), console)
+                            )
+                            continue
+
+                        formatted_grep_results = format_grep_results(tool_message)
+                        parent_tree.build_tree(
+                            id=sub_tree_grep_id,
+                            name="tree",
+                            data=f"[#FACC87][bold]Matches found({len(formatted_grep_results)})[/bold]",
+                        )
+                        parent_tree.add_leaf(
+                            id=tool_id,
+                            values=[parent_tree.get_tree(id=sub_tree_grep_id)],
+                        )
+
+                        leaf_values = []
+                        for res in formatted_grep_results:
+                            file_link = f"vscode://file/{res[0]}{res[1]}"
+                            leaf_values.append(
+                                (
+                                    f"{res[0]}:{res[1]}",
+                                    Text(
+                                        f"{res[0]}{res[1]}",
+                                        style=Style(
+                                            link=file_link,
+                                            underline=False,
+                                            color=color_palette["light-purple"],
+                                        ),
+                                    ),
+                                )
+                            )
+
+                        parent_tree.add_leaf(
+                            id=sub_tree_grep_id,
+                            values=leaf_values,
+                        )
+                        self._output_queue.put(
+                            (parent_tree.get_tree(id=tool_id), console)
+                        )
+
+                    # Tool: Get Code Definition
+                    elif tool_name == "get_code_block":
+                        if tool_message.startswith("Error:"):
+                            continue
+
+                        parent_tree.add_leaf(
+                            id=tool_id,
+                            values=[
+                                Syntax(
+                                    tool_message,
+                                    "python",
+                                    theme=code_block_md_theme,
+                                    background_color="default",
+                                )
+                            ],
+                        )
+
+                        self._output_queue.put(
+                            (parent_tree.get_tree(id=tool_id), console)
+                        )
+
+                    # Tool: Write
+                    elif tool_name == "write":
+                        if tool_message.startswith("Error:"):
+                            continue
+
+                    # Tool: Glob
+                    elif tool_name == "glob":
+                        if tool_message.startswith("Error:"):
+                            continue
+
+                        formatted_glob_results = format_glob_results(tool_message)
+
+                        parent_tree.build_tree(
+                            id=sub_tree_glob_id,
+                            name="tree",
+                            data=f"[#FACC87][bold]Pattern matched ({len(formatted_glob_results)})[/bold]",
+                        )
+
+                        parent_tree.add_leaf(
+                            id=tool_id,
+                            values=[parent_tree.get_tree(id=sub_tree_glob_id)],
+                        )
+
+                        root_dir = self.agent_state.values.get("root_dir")
+
+                        leaf_values = []
+                        for path in formatted_glob_results:
+                            leaf_values.append(
+                                (
+                                    path,
+                                    Text(
+                                        path,
+                                        style=Style(
+                                            link=f"vscode://file/{root_dir}/{path}:1",
+                                            underline=False,
+                                            color=color_palette["light-purple"],
+                                        ),
+                                    ),
+                                )
+                            )
+
+                        parent_tree.add_leaf(
+                            id=sub_tree_glob_id,
+                            values=leaf_values,
+                        )
+                        self._output_queue.put(
+                            (parent_tree.get_tree(id=tool_id), console)
+                        )
+
+                # Stream chunk type 3: Interrupt response
+                elif stream_message.get("__interrupt__"):
+                    old_code = stream_message["__interrupt__"][0].value["old_code"]
+                    new_code = stream_message["__interrupt__"][0].value["new_code"]
+                    self._output_queue.put((old_code, console))
+
+                    self._output_queue.put(
+                        ("[#CFCFCF]----------Code Diff------------[/]", console)
+                    )
+
+                    self._output_queue.put((new_code, console))
+
+                    human_approval = console.input("Enter Yes/No to accept/reject:")
+
+                    input_type = Command(resume={"option": human_approval})
+
+            # After the stream completes, check if we should continue the agent loop
+            # The stream exhaustion means one complete react cycle has finished
+            all_messages = self.get_messages()
+
+            if not all_messages:
+                # No messages at all - should not happen, terminate
+                agent_cycle_active = False
+                continue
+
+            # Find the last AI message
+            last_ai_message = None
+            for msg in reversed(all_messages):
+                if isinstance(msg, AIMessage):
+                    last_ai_message = msg
+                    break
+
+            if last_ai_message is None:
+                # No AI message found - terminate to be safe
+                agent_cycle_active = False
+                continue
+
+            # Check stop reason and tool calls
+            stop_reason = last_ai_message.response_metadata.get("stop_reason", None)
+            has_tool_calls = (
+                hasattr(last_ai_message, "tool_calls")
+                and last_ai_message.tool_calls
+                and len(last_ai_message.tool_calls) > 0
+            )
+
+            # The agent loop should continue only if:
+            # - stop_reason is NOT "end_turn", OR
+            # - There are pending tool calls that haven't been executed
+            # Since we use stream mode "updates", tool calls are auto-executed by the graph
+            # So if stream ended and we have end_turn with no tool_calls, we're done
+            if stop_reason == "end_turn" and not has_tool_calls:
+                agent_cycle_active = False
+            else:
+                # Continue the loop - there might be more work to do
+                agent_cycle_active = True
+
+        renderable_splits.update_spinner(
+            spin_it=False, data=self.calculate_cycle_cost(render=True)
+        )
+        renderable_splits.renderable_data = self.session_cost()
+
+
+def initiate_agent(
+    root_dir: str,
+    session_uuid: str,
+    output_queue: queue.Queue,
+    model_provider: str,
+    model: str,
+    preprocessed_data: dict,
+    sqlite_con: Any = None,
+):
+    # --- Create an Agent ---
+    agent = Agent(
+        root_dir=root_dir,
+        model=model,
+        provider=model_provider,
+        tools=[list_files, read_file, grep, edit_file, get_code_block, glob, write],
+        schema=GlobalState,  # ty:ignore[invalid-argument-type]
+        checkpointer=get_checkpointer(root_dir, sqlite_con),
+        stream_mode="updates",
+        auto_compact=False,
+        output_queue=output_queue,
+        session_uuid=session_uuid,
+        preprocessed_env_data=preprocessed_data,
+    )
+
+    agent._create()
+
+    # Populate state data with pre-processed information about codebase (like prog langugaes, .gitignore etc.)
+    preprocessed_data.update({"root_dir": root_dir})
+    agent.update_state(**preprocessed_data)
+
+    return agent

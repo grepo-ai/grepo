@@ -1,62 +1,78 @@
+import select
 import sys
 import termios
-import select
-import tty
 import time
+import tty
 
 
-# Set initial terminal state as context manager before reading input from stdin
 class GetchRaw:
+    """
+    Context manager for reading raw terminal input.
+
+    Note: When pasting text in iTerm2, the terminal buffers input and may not
+    flush immediately. Users may need to press any key after pasting to trigger
+    the display update. This is a known limitation of iTerm2's input handling
+    in raw mode.
+    """
+
     def __init__(self):
         self.fd = sys.stdin.fileno()
 
     def __enter__(self):
         self.old = termios.tcgetattr(self.fd)
-        self.tty_mode = tty.setcbreak(self.fd)
+        tty.setcbreak(self.fd)
         return self
 
     def __exit__(self, exc_type, exc, tb):
         termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
 
 
-# Read keystrokes from user
 def read_keystroke():
+    """
+    Read a single keystroke or escape sequence from stdin.
+    Returns None if no input available within timeout.
+    """
     rlist, _, _ = select.select([sys.stdin], [], [], 0.02)
     if not rlist:
         return None
+
     ch = sys.stdin.read(1)
 
-    # Return non-sequence keystrokes i.e single char
-    if ch != "\x1b":
-        return ch
+    # Handle escape sequences (arrow keys, etc.)
+    if ch == "\x1b":
+        return _read_escape_sequence()
 
-    # So we handled normal keystrokes now we know it is possibly an arrow sequence
-    # (arrow keys are sequence of multiple bytes)
-    # so we need to record that sequence (multi-byte) over a time range to make it look like single
-    # logical key i.e arrow key (up/down/left/right)
+    # Regular character
+    return ch
 
-    arrow_key_seq = ch
-    seq_time_range = time.monotonic() + 0.03
 
-    while time.monotonic() < seq_time_range:
+def _read_escape_sequence():
+    """Read and return a complete escape sequence"""
+    seq = "\x1b"
+    timeout = time.monotonic() + 0.05
+
+    while time.monotonic() < timeout:
         rlist, _, _ = select.select([sys.stdin], [], [], 0.01)
 
-        next_char = sys.stdin.read(1)
-        if not next_char:
+        # if not rlist:
+        #     break
+
+        ch = sys.stdin.read(1)
+        if not ch:
             break
 
-        if next_char == "\x1b":
+        seq += ch
+
+        # Arrow keys: \x1b[A (up), \x1b[B (down), \x1b[C (right), \x1b[D (left)
+        if seq in ("\x1b[A", "\x1b[B"):
             break
 
-        arrow_key_seq += next_char
-
-        # Check if complete sequence has been formed for UP and DOWN arrow keys
-        if arrow_key_seq in ("\x1b[B", "\x1b[A"):
-            break
-        elif arrow_key_seq in ("\x1b[C", "\x1b[D"):
-            arrow_key_seq = None
-            continue
-        if len(arrow_key_seq) == 6:
+        elif seq in ("\x1b[C", "\x1b[D"):
+            seq = ""
             break
 
-    return arrow_key_seq
+        # Other escape sequences - stop at reasonable length
+        if len(seq) >= 6:
+            break
+
+    return seq

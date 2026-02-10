@@ -1,164 +1,459 @@
 import os
-from rich.console import Group
-from rich.text import Text
-from rich.panel import Panel
-from rich.box import Box
-from rich.box import ROUNDED, SIMPLE
-from rich.spinner import Spinner
-import pyfiglet
 import random
-from src.cli.commands import Commands
+from dataclasses import dataclass, field
+from typing import Any, Optional, Union
+
+import pyfiglet
+from rich.align import Align
+from rich.box import ROUNDED, SIMPLE, Box
+from rich.console import Console, ConsoleOptions, Group, RenderResult
+from rich.panel import Panel
+from rich.spinner import Spinner
+from rich.table import Table
+from rich.text import Text
+from rich.tree import Tree
+
+from cli import __version__
+from cli.commands import Commands
+from cli.utils import check_version_updates
+
+# Custom box with no left/right borders (only top and bottom horizontal lines)
+NO_SIDE_BORDER_BOX = Box(
+    " ── \n"  # top: space, horizontal, horizontal, space
+    "    \n"  # head: 4 spaces
+    " ── \n"  # head divider
+    "    \n"  # mid: 4 spaces
+    " ── \n"  # mid divider
+    " ── \n"  # row divider
+    "    \n"  # foot: 4 spaces
+    " ── \n"  # bottom: space, horizontal, horizontal, space
+)
 
 
 def render_intro(console):
-    console.print("\n")
+    # Grepo logo
     text = Text()
-    text.append(pyfiglet.figlet_format("grepo", font="ansishadow"), style="#8FF4FF")
-    console.print(text)
+    text.append(pyfiglet.figlet_format("grepo", font="stop"))
 
-    panel = Panel(
-        f"[#FAFAFA]   * Welcome to [#80FFFD]Grepo[/] * [/] \n\n [#F5BE3D]  cwd: {os.getcwd()}[/] \n\n  [#F5BE3D] [italic]type /help for help[/italic],[italic] / for list of commands[/] ",
-        box=ROUNDED,
-        border_style="#80FFFD",
-        expand=False,
-        padding=(0, 0, 0, 0),
+    grid = Table.grid(padding=(0, 2))
+    grid.add_column(ratio=0)
+    grid.add_column(ratio=1)
+
+    # Root directory and help or / commands info
+    left = f"[#69FFB4]{text}[/]"
+    right = f"[#CAC7FF]\ndir: {os.getcwd()}\n[italic]\nversion: {__version__}[/]"
+    grid.add_row(
+        Align.left(left, vertical="middle"), Align.right(right, vertical="middle")
     )
-    console.print(panel)
+
+    box_panel = Panel(grid, box=SIMPLE, padding=(0, 1, 0, 1), width=90)
+
+    console.print(box_panel)
 
 
-def input_render_styles(buffer=None, is_first_time=True, render_alert=None):
-    # Render any alerts
-    if render_alert:
-        renderable_text = f"[#FF6969]> {render_alert}[/]"
-        border_style = "#FF6969"
+# Deprecated: (only kept for reference)
+@dataclass
+class AgentLogs:
+    messages: list[Any] = field(default_factory=list)
+    rendered_all_once: bool = False
+    _version: int = 0  # Internal version counter to trigger re-renders
 
-    # Empty buffer shows placeholder text
-    elif not buffer and is_first_time:
-        renderable_text = (
-            '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]'
-        )
-        border_style = "#69FFB4"
+    def add(self, message):
+        self.messages.append(message)
+        self._version += 1  # Increment to trigger Live refresh
 
-    # Bash command buffer style
-    elif buffer and buffer[0] == "#":
-        buffer = buffer[1:]
-        renderable_text = f"[#FFD66E]# {buffer}_[/]"
-        border_style = "#FFD66E"
+    def clear(self):
+        self.messages.clear()
+        self._version += 1
 
-    # Default input bar style
-    else:
-        renderable_text = f"[#69FFB4]> {buffer}_[/]"
-        border_style = "#69FFB4"
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> RenderResult:
+        """Render all messages - content will be clipped by panel's max_height"""
+        if not self.messages:
+            return
 
-    return renderable_text, border_style
+        # Yield all messages in order
+        for message in self.messages:
+            yield message
 
 
 class RenderSplits:
-    def __init__(self, output_queue, lock):
-        self.blank_box = Box("    \n" * 8, ascii=True)
+    def __init__(self, output_queue, lock, console):
+        # self.blank_box = Box("    \n" * 8, ascii=True)
         self.lock = lock
-        self._last_log_count = 0
-        self._previous_buffer = ""
         self.output_queue = output_queue
         self._log_history = ""
-        self._upper_split_panel = Panel(
-            "[#F47AFF]How can i help you today?[/]",
-            box=SIMPLE,
-            height=0,
-        )
-        self._lower_split_panel = Panel(
-            '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]',
-            box=ROUNDED,
-            border_style="#545454",
-            height=3,
-        )
+        self._renderable_data = self._default_stats()
+        self.console = console
+        self._thinking = False
+        self._compaction = False
+        self._commands_palette_active = False
+        self._lower_split_panel = self._lower_panel(init=True, screen_type="init")
         self.spinner = Panel(
-            "[#969696]* Tip: Add .greporules for custom instructions for Grepo to remember[/]",
+            "[#969696]* Tip: Add AGENTS.md file in root dir of your project with your custom instructions, style guide or project architecture details.[/]",
             box=SIMPLE,
             height=0,
+            padding=(0, 1, 0, 1),
         )
+        self._footer_split_panel = self._footer_panel(init=True)
+        # self._agent_logs = AgentLogs()  # Deprecated
 
-        self._footer_split_panel = Panel(
-            "[dim]Press ? for shortcuts[/]", box=SIMPLE, height=0
-        )
+    def _default_stats(self):
+        stats_dict = {
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "session_cost": 0,
+        }
+        return stats_dict
 
-    def update_upper_split(self):
-        import time
+    def _footer_panel(self, partial_render=False, init=False, blank=False, **kwargs):
+        footer_tbl = Table.grid(expand=True)
+        footer_tbl.add_column("", ratio=2)
+        footer_tbl.add_column("", ratio=2, justify="right", no_wrap=True)
+        footer_tbl.add_column("", ratio=1, justify="right", no_wrap=True)
 
-        if self.output_queue and len(self.output_queue) != self._last_log_count:
-            while self.output_queue:
-                log_message = self.output_queue.popleft()
-                self._log_history += f"{log_message}\n"
-                self.update_spinner(spin_it=True)
+        if init or blank:
+            panel = Panel(
+                footer_tbl,
+                box=SIMPLE,
+                height=0,
+                padding=(0, 1, 0, 1),
+            )
 
-                # TODO: Remove this when integrating agent flow
-                time.sleep(2)
+            return panel
 
-            # Render the logs obtained until now
-            render_logs = self._log_history
+        if self._commands_palette_active:
+            if kwargs.get("list_all_commands"):
+                return Commands.main_commands_selector()
 
-            self._upper_split_panel.renderable = f"[#CFCFCF]{render_logs}[/]"
-            # TODO add dynamic re-sizing and auto-scrolling logic
-            self._upper_split_panel.height = 5
+            if kwargs.get("dynamic_selection", None) is not None:
+                return Commands.main_commands_selector(kwargs["dynamic_selection"])
 
-            # Update last log count this is done to avoid frequent updates when no new logs arrived
-            self._last_log_count = len(self.output_queue)
+        elif partial_render:
+            if self._thinking:
+                left_text = "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
+                right_text = "[#B6CBFA]Thinking on[/] [dim](tab to toggle)[/]"
+            else:
+                left_text = "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
+                right_text = "[dim]Thinking off (tab to toggle)[/]"
+
+            if self._compaction:
+                footer_tbl.add_row(
+                    f"{left_text}",
+                    Spinner(
+                        "dots3",
+                        text="[#B6CBFA]compacting context[/]",
+                        style="#B6CBFA",
+                    ),
+                    f"{right_text}",
+                )
+            else:
+                new_version = check_version_updates()
+                if new_version != __version__:
+                    update_alert = "[#FC7C7C]update available pip install -U grepo[/]"
+                else:
+                    update_alert = ""
+
+                footer_tbl.add_row(
+                    f"{left_text}",
+                    f"{update_alert}",
+                    f"{right_text}",
+                )
+
+            return footer_tbl
+
+        else:
+            left_text = "[dim]Press / for commands (coming soon) • Ctrl-C (quit)[/]"
+            right_text = "[dim]Thinking off (tab to toggle)[/]"
+
+            footer_tbl.add_row(
+                f"{left_text}",
+                "",
+                f"{right_text}",
+            )
+
+            panel = Panel(
+                footer_tbl,
+                box=SIMPLE,
+                height=0,
+                padding=(0, 1, 0, 1),
+            )
+
+            return panel
+
+    def _lower_panel(
+        self, main=False, init=False, render=True, screen_type=None, **kwargs
+    ):
+        # Main screen
+        if main:
+            panel = Panel(
+                '[#69FFB4]> [dim]Try this "explain what this repo is about?" [/dim][/]',
+                box=NO_SIDE_BORDER_BOX,
+                border_style="#545454",
+                height=3,
+                width=self.console.size.width,
+                padding=(0, 1, 0, 1),
+            )
+
+            return panel
+
+        # Initial LLM selection and API input screen
+        elif init and screen_type == "init":
+            renderable_text = Commands.init_commands_selector(screen_type=screen_type)
+
+            panel = Panel(
+                renderable_text,
+                box=ROUNDED,
+                height=8,
+                width=100,
+                border_style="#545454",
+                padding=(1, 1, 0, 1),
+            )
+
+            return panel
+
+        elif render:
+            if kwargs.get("dynamic_selection") is not None:
+                renderable_text = Commands.init_commands_selector(
+                    dynamic_selection=kwargs.get("dynamic_selection"),
+                    screen_type=screen_type,
+                )
+
+                height = 8
+                border_style = None
+
+            elif kwargs.get("recursive_render"):
+                renderable_text = Commands.init_commands_selector(
+                    screen_type=screen_type
+                )
+                height = 8
+                border_style = None
+
+            elif kwargs.get("clear_screen", False):
+                renderable_text = "[dim]enter your API key[/]"
+                height = 3
+                border_style = None
+
+            else:
+                renderable_text, border_style = Commands.input_render_styles(
+                    kwargs.get("buffer"),
+                    kwargs.get("is_first_time"),
+                    kwargs.get("render_alert"),
+                )
+                height = 3
+
+            return renderable_text, border_style, height
+
+    @property
+    def renderable_data(self):
+        return self._renderable_data
+
+    @renderable_data.setter
+    def renderable_data(self, data_dict):
+        self._renderable_data = data_dict
 
     def update_lower_split(
-        self, console, buffer, is_first_time=True, render_alert=False
+        self,
+        main=False,
+        render=True,
+        screen_type=None,
+        **kwargs,
     ):
-        renderable_text, border_style = input_render_styles(
-            buffer, is_first_time, render_alert
-        )
+        if main:
+            self._lower_split_panel = self._lower_panel(
+                main=True, screen_type=screen_type
+            )
 
-        self._lower_split_panel.renderable = renderable_text
-        self._lower_split_panel.border_style = border_style
+        elif render:
+            renderable_text, border_style, height = self._lower_panel(
+                screen_type=screen_type, **kwargs
+            )
 
-        # This is to prevent frequent updates when buffer didnt even change
-        self._previous_buffer = buffer
+            self._lower_split_panel.renderable = renderable_text
 
-    def update_spinner(self, spin_it=True, status_text=None):
-        status_fillers = ["Thinking hard like jelly...", "Chewing GPUs..."]
+            if border_style is not None:
+                self._lower_split_panel.border_style = border_style
+
+            self._lower_split_panel.height = height
+
+            if kwargs.get("clear_screen") is not None:
+                self._lower_split_panel.width = 150
+            # Update box style when transitioning to input mode
+            if kwargs.get("clear_screen"):
+                self._lower_split_panel.padding = (0, 1, 0, 1)
+
+    def update_spinner(
+        self,
+        spin_it: bool = True,
+        status_text: Optional[str] = None,
+        data: Optional[str] = None,
+    ):
+        status_fillers = ["Jellying...", "Chewing GPUs...", "Poking intelligence..."]
 
         if not status_text:
             status_text = random.choice(status_fillers)
 
         if spin_it:
             self.spinner.renderable = Spinner(
-                "star", text=f"[#FF7DFC]{status_text}[/]", style="#FF7DFC"
+                "dots", text=f"[#60FCF5]{status_text}[/]", style="#60FCF5"
             )
+
+        elif not spin_it and data is not None:
+            self.spinner.renderable = data
+
         else:
             self.spinner.renderable = (
                 "[#969696]Let me know what else you need help with.[/]"
             )
 
     def update_footer_split(self, blank=False, **kwargs):
-        dynamic_selection = kwargs.get("dynamic_selection", None)
-        list_all_commands = kwargs.get("list_all_commands", False)
-        exit_screen = kwargs.get("exit_screen", False)
-
-        if list_all_commands:
-            self._footer_split_panel.renderable = Commands.main_commands_selector()
-            self._footer_split_panel.height = 8
-
-        elif dynamic_selection is not None:
-            self._footer_split_panel.renderable = Commands.main_commands_selector(
-                dynamic_selection
+        if kwargs.get("list_all_commands", None) is not None:
+            self._footer_split_panel.renderable = self._footer_panel(
+                list_all_commands=kwargs.get("list_all_commands")
             )
             self._footer_split_panel.height = 8
 
-        elif exit_screen:
-            self._footer_split_panel.renderable = """<TODO: show actual usage stats>\nInput Token usage: 1000\nTotal cost: $0.52\nModels used: Kimi-2, Mixtral"""
+        elif kwargs.get("dynamic_selection", None) is not None:
+            self._footer_split_panel.renderable = self._footer_panel(
+                dynamic_selection=kwargs.get("dynamic_selection")
+            )
             self._footer_split_panel.height = 8
 
+        elif kwargs.get("thinking", None) is not None:
+            self._thinking = kwargs.get("thinking")
+            self._footer_split_panel.renderable = self._footer_panel(
+                partial_render=True
+            )
+
+        elif kwargs.get("compaction", None) is not None:
+            self._compaction = kwargs.get("compaction")
+            self._footer_split_panel.renderable = self._footer_panel(
+                partial_render=True
+            )
+
+        elif kwargs.get("exit_screen", False):
+            stats_tbl = Table.grid(expand=False)
+            stats_tbl.add_column(
+                "", no_wrap=True, width=20
+            )  # width is used to add space between column values for each row
+            stats_tbl.add_column("", justify="left")
+
+            token_usage_keys = {
+                "total_input_tokens": "Total input tokens",
+                "total_output_tokens": "Total output tokens",
+                "cache_creation_input_tokens": "Cache write",
+                "cache_read_input_tokens": "Cache read",
+                "session_cost": "Total cost ($)",
+                "model_used": "Models used",
+            }
+
+            for key, value in self.renderable_data.items():
+                if key == "context_window_used":
+                    continue
+                stats_tbl.add_row(token_usage_keys.get(key), str(value))
+
+            self._footer_split_panel.renderable = stats_tbl
+            self._footer_split_panel.box = SIMPLE
+            self._footer_split_panel.style = "dim"
+            self._footer_split_panel.height = 7
+
         elif blank:
-            self._footer_split_panel.renderable = "[dim]Press ? for shortcuts[/]"
-            self._footer_split_panel.height = 0
+            self._footer_split_panel = self._footer_panel(blank=True)
 
     def __rich__(self):
+        # Only render the rest of the panels as agent logs are printed directly above Live region via console.print()
         return Group(
-            self._upper_split_panel,
+            # self._upper_split_panel,
             self.spinner,
             self._lower_split_panel,
             self._footer_split_panel,
         )
+
+
+@dataclass(slots=True)
+class TreeRender:
+    """
+    This dataclass is used for managing lifecycle of rich tree objects
+    as well as for rendering tool calls generated data as tree objects.
+    """
+
+    node_map: dict[str, tuple[Tree, set[Union[str, int]]]] = field(default_factory=dict)
+
+    def build_tree(self, id, name, data=None):
+        tree_map = {
+            "grep": Tree(f"[#FC69FF]● [/][#7AFF85][bold]Search[/bold][/] ({data})"),
+            "list": Tree(f"[#FC69FF]● [/][#7AFF85][bold]List[/bold][/] ({data})"),
+            "read": Tree("[#FC69FF]● [/][#7AFF85][bold]Read[/bold][/]"),
+            "write": Tree(f"[#FC69FF]● [/][#7AFF85]Write[/] ({data})"),
+            "code_search": Tree(
+                f"[#FC69FF]● [/][#7AFF85][bold]Code Search[/bold][/] ({data})"
+            ),
+            "glob": Tree(f"[#FC69FF]● [/][#7AFF85][bold]Glob[/bold][/] ({data})"),
+            "edit": Tree(f"[#FC69FF]● [/][#7AFF85][bold]Edit[/bold][/] ({data})"),
+            "tree": Tree(f"{data}[/]"),
+        }
+
+        self.node_map[id] = (tree_map.get(name), set())  # ty:ignore[invalid-assignment]
+
+    def get_tree(self, id: str):
+        if id in self.node_map:
+            return self.node_map.get(id)[0]  # ty:ignore[non-subscriptable]
+
+    def get_tree_leafs(self, id):
+        if id in self.node_map:
+            return self.node_map.get(id)[1]  # ty:ignore[non-subscriptable]
+
+    def add_leaf(self, id: str, values: list | str):
+        if id not in self.node_map:
+            raise ValueError("Tree does not exist")
+
+        if isinstance(values, str):
+            if values in self.node_map[id][1]:
+                return
+
+            # Add to Tree object
+            self.node_map[id][0].add(values)
+            # Add to set
+            self.node_map[id][1].add(values)
+
+        else:
+            for val in values:
+                if isinstance(val, tuple):
+                    if val[0] in self.node_map[id][1]:
+                        continue
+
+                    # Add to Tree object
+                    self.node_map[id][0].add(val[1])
+                    # Add to set
+                    self.node_map[id][1].add(val[0])
+
+                else:
+                    if val in self.node_map[id][1]:
+                        continue
+
+                    # Add to Tree object
+                    self.node_map[id][0].add(val)
+                    # Add to set
+                    self.node_map[id][1].add(val)
+
+
+if __name__ == "__main__":
+    import time
+
+    console = Console()
+
+    tree_render = TreeRender()
+    grep_tree = tree_render.build_tree(name="grep")  # ty:ignore[missing-argument]
+    paths = ["/src/agent/main.py", "/src/cli/main.py", "/src/agent/tools.py"]
+
+    tree_render.add_leaf(grep_tree, values=paths)
+    console.print(grep_tree)
+
+    time.sleep(2)
+
+    new_path = ["/src/cli/mains.py"]
+    tree_render.add_leaf(grep_tree, values=new_path)
+    console.print(grep_tree)

@@ -1,26 +1,38 @@
-from tree_sitter import Language, Parser, Query, QueryCursor
-import tree_sitter_python as tspython
-from enum import Enum
-from collections import defaultdict
-from typing import Optional
 import os
-from src.code_parser.queries import CODE_SYMBOLS_QUERY_MAP
+from collections import defaultdict
+from enum import Enum
+from typing import Optional
+
+import tree_sitter_javascript as tsjavascript
+import tree_sitter_python as tspython
+from tree_sitter import Language, Parser, Query, QueryCursor, Tree
+
+from code_parser.queries import CODE_SYMBOLS_QUERY_MAP
+
+language_map = {"py": "PYTHON", "js": "JAVASCRIPT", "ts": "TYPESCRIPT"}
 
 
 class ParserLanguages(Enum):
     PYTHON = "py"
+    JAVASCRIPT = "js"
+    TYPESCRIPT = "ts"
 
 
+# TODO think of a better class design
 class CodeWalker:
     def __init__(self, language: str):
+        self._language_str = language
         self.language = self._set_language(language)
         self.parser = self._init_parser()
-        self.queries = None  # TODO think of a better class design
-        self.tree = None
+        self.queries = None
+        self.tree: Optional[Tree] = None
 
     def _set_language(self, language):
         if language == ParserLanguages.PYTHON.value:
             set_language = Language(tspython.language())
+
+        elif language == ParserLanguages.JAVASCRIPT.value:
+            set_language = Language(tsjavascript.language())
 
         return set_language
 
@@ -32,14 +44,19 @@ class CodeWalker:
         return self.parser
 
     def create_query(self, query_expression: str, language: Language):
-        query = Query(language, query_expression.encode("utf-8"))
+        query = Query(language, query_expression)
         return query
 
     def create_query_cursor(self, query: Query) -> QueryCursor:
         query_cursor = QueryCursor(query)
         return query_cursor
 
-    def parse(self, encoded_code: str = None, single_query: str = None, node=None):
+    def parse(
+        self,
+        encoded_code: Optional[str] = None,
+        single_query: Optional[str] = None,
+        node=None,
+    ):
         """Parses the code or captures the node for a given query pattern"""
 
         if encoded_code:
@@ -51,8 +68,9 @@ class CodeWalker:
 
         # If `single_query` provided it takes precedence over multiple queries
         if single_query and not node:
-            node_captures = query_cursor.captures(self.tree.root_node)
-            return node_captures
+            if self.tree:
+                node_captures = query_cursor.captures(self.tree.root_node)
+                return node_captures
 
         elif single_query and node:
             node_captures = query_cursor.captures(node)
@@ -63,7 +81,7 @@ class CodeWalker:
     @staticmethod
     def encode_code(
         file_paths: Optional[list[str]] = None,
-        dir_path: str = None,
+        dir_path: Optional[str] = None,
         ignore_files: list[str] = [],
     ):
         """
@@ -100,7 +118,8 @@ class CodeWalker:
         code_blocks = defaultdict(list)
 
         parsed_code = self.parse(
-            encoded_code=code, single_query=CODE_SYMBOLS_QUERY_MAP["class"]
+            encoded_code=code,
+            single_query=CODE_SYMBOLS_QUERY_MAP[self._language_str]["class"],
         )
         if parsed_code.get("class_name"):
             for class_name_node in parsed_code["class_name"]:
@@ -120,24 +139,47 @@ class CodeWalker:
 
     def _extract_class_methods(self, class_node, class_name, file_path):
         class_methods = []
-        parsed_code = self.parse(
-            node=class_node, single_query=CODE_SYMBOLS_QUERY_MAP["function"]
-        )
 
-        if parsed_code.get("function_name"):
-            for method_name_node in parsed_code["function_name"]:
-                class_methods.append(
-                    {
-                        "method_name": method_name_node.text.decode(),
-                        "method_code": method_name_node.parent.text.decode(),
-                        "file_path": file_path,
-                    }
-                )
+        if self._language_str in [
+            ParserLanguages.JAVASCRIPT.value,
+            ParserLanguages.TYPESCRIPT.value,
+        ]:
+            method_query = CODE_SYMBOLS_QUERY_MAP[self._language_str]["method"]
+            parsed_code = self.parse(
+                node=class_node,
+                single_query=method_query,
+            )
+            if parsed_code.get("method_name"):
+                for method_name_node in parsed_code["method_name"]:
+                    class_methods.append(
+                        {
+                            "method_name": method_name_node.text.decode(),
+                            "method_code": method_name_node.parent.text.decode(),
+                            "file_path": file_path,
+                        }
+                    )
+
+        elif self._language_str == ParserLanguages.PYTHON.value:
+            method_query = CODE_SYMBOLS_QUERY_MAP[self._language_str]["function"]
+            parsed_code = self.parse(
+                node=class_node,
+                single_query=method_query,
+            )
+
+            if parsed_code.get("function_name"):
+                for method_name_node in parsed_code["function_name"]:
+                    class_methods.append(
+                        {
+                            "method_name": method_name_node.text.decode(),
+                            "method_code": method_name_node.parent.text.decode(),
+                            "file_path": file_path,
+                        }
+                    )
 
         return class_methods
 
     def _extract_functions(self, code_map, code, file_path):
-        # Tree object of the code parsed
+        # Tree node of the code parsed
         tree = self.parse(encoded_code=code)
 
         functions_list = []
@@ -149,8 +191,10 @@ class CodeWalker:
             if not visited_children:
                 node = cursor.node
 
-                # TODO: Add support for other languages too starting with JS
-                if node.type == "function_definition" and node.parent.type == "module":
+                if node.type in [
+                    "function_definition",
+                    "function_declaration",
+                ] and node.parent.type in ["module", "program"]:
                     functions_list.append(node.text.decode())
                 if not cursor.goto_first_child():
                     visited_children = True
@@ -170,7 +214,7 @@ class CodeWalker:
 
         parsed_code = self.parse(
             encoded_code="\n".join(functions_list).encode(),
-            single_query=CODE_SYMBOLS_QUERY_MAP["function"],
+            single_query=CODE_SYMBOLS_QUERY_MAP[self._language_str]["function"],
         )
 
         for function_name_node in parsed_code["function_name"]:
@@ -185,37 +229,3 @@ class CodeWalker:
         code_map.update({"functions": functions_map})
 
         return code_map
-
-
-if __name__ == "__main__":
-    from pathlib import Path
-    import json
-
-    abs_file_path = "/Users/tausif/grepo-main-env/grepo/src/code_parser/dino_game.py"
-    file_path = str(Path(abs_file_path))
-
-    # Create a parser
-    code_walker = CodeWalker(ParserLanguages.PYTHON.value)
-
-    # Pass in the code to be parsed
-    encoded_code = CodeWalker.encode_code(file_paths=[abs_file_path])["dino_game.py"]
-
-    # Construct code map with extracted code blocks (classes, functions and methods)
-    symbols_map = code_walker.extract_symbols(encoded_code, file_path)
-
-    # print(json.dumps(symbols_map, indent=2))
-
-    from rich.console import Console
-    from rich.tree import Tree
-
-    value = 0
-    console = Console()
-    tree = Tree("[#E8B641]Search[/]")
-
-    import time, random
-
-    while True:
-        user_input = input("enter a function block: ")
-        print("##############")
-        # print(symbols_map)
-        time.sleep(5)

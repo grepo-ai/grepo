@@ -28,7 +28,7 @@ const NODE_LABELS: Record<string, string> = {
   list: "List",
   read: "Read",
   write: "Write",
-  grep: "Search",
+  grep: "Grep",
   glob: "Glob",
   code_search: "Code Search",
   edit: "Edit",
@@ -87,9 +87,8 @@ export function ToolTree({ nodes }: { nodes: ToolNode[] }) {
                   }
 
                 // For non-code children that carry file locations, render them
-                // as clickable editor links using a vscode://file URI so that
-                // supporting terminals/editors (including Cursor/VS Code) can
-                // open them directly.
+                // as clickable links using a file:// URI so the OS opens the
+                // file in the user's default application (e.g. their editor).
                   const filePath = (c as any).path as string | undefined;
                   const rootPath = (c as any).root as string | undefined;
                   const rawLine = (c as any).line as number | string | null | undefined;
@@ -112,9 +111,12 @@ export function ToolTree({ nodes }: { nodes: ToolNode[] }) {
                   const displayLabel = c.label;
                   if (fullPath) {
                     const locationText = line ? `${fullPath}:${line}` : fullPath;
-                    const target = line
-                      ? `vscode://file/${fullPath}:${line}`
-                      : `vscode://file/${fullPath}`;
+                    // file:// so the OS opens in default app (editor); line is shown in locationText.
+                    const encodedPath = fullPath
+                      .split("/")
+                      .map((seg) => encodeURIComponent(seg))
+                      .join("/");
+                    const target = `file:///${encodedPath}`;
 
                     const OSC = "\u001B]";
                     const BEL = "\u0007";

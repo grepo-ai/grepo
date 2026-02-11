@@ -216,14 +216,20 @@ export default function App() {
           } else if (Array.isArray(v.content)) {
             for (const c of v.content) {
               if (typeof c === "string") children.push(c);
-              else if (c && typeof c === "object" && "path" in c)
-                children.push({ label: (c as { path: string }).path });
-              else if (c && typeof c === "object" && "file" in c)
+              else if (c && typeof c === "object" && "path" in c) {
+                const p = c as { path: string; line?: number; root?: string };
+                const label =
+                  p.line != null ? `${p.path}:${p.line}` : p.path;
+                children.push({
+                  label,
+                  path: p.path,
+                  line: p.line,
+                  root: p.root,
+                });
+              } else if (c && typeof c === "object" && "file" in c)
                 children.push({
                   label: `${(c as { file: string }).file}:${(c as { line?: string }).line ?? ""}`,
                 });
-              else if (c && typeof c === "object" && "path" in c)
-                children.push({ label: (c as { path: string }).path });
             }
           } else if (typeof v.content === "string") {
             children.push(v.content);

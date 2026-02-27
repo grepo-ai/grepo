@@ -133,9 +133,7 @@ def _handle_agent_chunk(
             tid = tc.get("id")
             short = TOOL_SHORT_NAMES.get(name, name)
             data = _tool_start_data(name, args)
-            tool_calls.append(
-                {"id": tid, "name": short, "args": args, "data": data}
-            )
+            tool_calls.append({"id": tid, "name": short, "args": args, "data": data})
 
     # Emit thinking/delta events first so streaming text is rendered immediately.
     for kind, chunk in extract_ordered_events(stream_message):

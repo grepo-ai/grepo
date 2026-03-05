@@ -43,6 +43,153 @@ interface Turn {
   toolNodes: Record<string, ToolNode>;
 }
 
+const MAX_TURNS_IN_VIEW = 10;
+const MAX_EVENTS_PER_TURN = 200;
+
+function trimEvents(events: TurnEvent[]): TurnEvent[] {
+  if (events.length <= MAX_EVENTS_PER_TURN) return events;
+
+  const over = events.length - MAX_EVENTS_PER_TURN;
+  const preferredDropKinds: TurnEventKind[] = ["assistant_delta", "thinking", "user"];
+  const preferredSet = new Set(preferredDropKinds);
+
+  const dropIndices = new Set<number>();
+  let remainingToDrop = over;
+
+  // First drop from the earliest streaming/user events.
+  for (let i = 0; i < events.length && remainingToDrop > 0; i++) {
+    if (preferredSet.has(events[i].kind)) {
+      dropIndices.add(i);
+      remainingToDrop--;
+    }
+  }
+
+  // If still over the limit, drop from the earliest remaining events.
+  if (remainingToDrop > 0) {
+    for (let i = 0; i < events.length && remainingToDrop > 0; i++) {
+      if (!dropIndices.has(i)) {
+        dropIndices.add(i);
+        remainingToDrop--;
+      }
+    }
+  }
+
+  return events.filter((_, idx) => !dropIndices.has(idx));
+}
+
+interface TurnViewProps {
+  turn: Turn;
+  isLastTurn: boolean;
+  backendBusy: boolean;
+  toolsExpanded: boolean;
+}
+
+const TurnView = React.memo(function TurnView({
+  turn,
+  isLastTurn,
+  backendBusy,
+  toolsExpanded,
+}: TurnViewProps) {
+  const events = turn.events;
+  const renderedToolIds = new Set<string>();
+
+  let lastActiveToolId: string | null = null;
+  for (const e of events) {
+    if (e.kind === "tool_start") {
+      lastActiveToolId = (e.payload as { toolId: string }).toolId;
+    } else if (e.kind !== "tool_result") {
+      lastActiveToolId = null;
+    }
+  }
+
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Box marginBottom={1}>
+        <Text color="#F982FF" backgroundColor="#292929" wrap="wrap">
+          {"> "}
+          {turn.userText}
+        </Text>
+      </Box>
+      {events.map((event, idx) => {
+        const key = `turn-${turn.id}-event-${idx}-${event.kind}`;
+        if (event.kind === "thinking") {
+          const text = String(event.payload ?? "");
+          if (!text) return null;
+          return (
+            <Box key={key} flexDirection="column" marginBottom={1}>
+              <Text wrap="wrap" color={colors.thinkingText}>
+                {"Thought --> "}{text}
+              </Text>
+            </Box>
+          );
+        }
+        if (event.kind === "assistant_delta") {
+          const text = String(event.payload ?? "");
+          if (!text) return null;
+
+          const isStreaming = backendBusy && isLastTurn;
+          if (isStreaming) {
+            return (
+              <Box key={key} flexDirection="row" marginBottom={1}>
+                <Text color={colors.inputBarBg}>● </Text>
+                <Box marginLeft={1}>
+                  <Text wrap="wrap">{text}</Text>
+                </Box>
+              </Box>
+            );
+          }
+
+          const fenced = parseFencedCodeBlock(text);
+          return (
+            <Box key={key} flexDirection="row" marginBottom={1}>
+              <Text color={colors.inputBarBg}>● </Text>
+              <Box marginLeft={1}>
+                {fenced ? (
+                  <Text>{highlightCode(fenced.code, fenced.language)}</Text>
+                ) : (
+                  <Markdown
+                    heading={chalk.hex(colors.paletteHighlight).bold}
+                    firstHeading={chalk.hex(colors.introTextPink).bold}
+                    code={chalk.hex(colors.green)}
+                    codespan={chalk.hex(colors.orange)}
+                  >
+                    {text}
+                  </Markdown>
+                )}
+              </Box>
+            </Box>
+          );
+        }
+        if (event.kind === "tool_start" || event.kind === "tool_result") {
+          const toolId = (event.payload as { toolId: string }).toolId;
+          if (renderedToolIds.has(toolId)) return null;
+          renderedToolIds.add(toolId);
+          const node = turn.toolNodes[toolId];
+          if (!node) return null;
+          const toolActive = isLastTurn && backendBusy && toolId === lastActiveToolId;
+          return (
+            <Box key={key} marginBottom={1}>
+              <ToolTree nodes={[node]} expanded={toolsExpanded} isActive={toolActive} />
+            </Box>
+          );
+        }
+        if (event.kind === "error") {
+          const text = String(event.payload ?? "");
+          return (
+            <Box key={key} marginBottom={1}>
+              <Text color={colors.red}>{text}</Text>
+            </Box>
+          );
+        }
+        if (event.kind === "user") {
+          return null;
+        }
+        return null;
+      })}
+    </Box>
+  );
+});
+
 function mergeUniqueChildren(
   existing: ToolNode["children"] | undefined,
   incoming: ToolNode["children"] | undefined
@@ -77,23 +224,50 @@ export default function App() {
   const backend = useBackend();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [activeTurnId, setActiveTurnId] = useState<number | null>(null);
-  const [streamBuf, setStreamBuf] = useState(""); // active turn only
-  const [thinkingBuf, setThinkingBuf] = useState(""); // active turn only
   const [draft, setDraft] = useState("");
   const [cost, setCost] = useState<Record<string, unknown> | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteIndex, setPaletteIndex] = useState(0);
+  const [toolsExpanded, setToolsExpanded] = useState(false);
+  const [turnElapsed, setTurnElapsed] = useState<number | null>(null);
   const streamBufRef = useRef("");
   const thinkingBufRef = useRef("");
   const nextTurnIdRef = useRef(1);
+  const turnStartRef = useRef<number | null>(null);
+  const lastCtrlORef = useRef(0);
 
   const appendEventToActiveTurn = useCallback(
     (event: TurnEvent) => {
       setTurns((prev) => {
         if (activeTurnId === null) return prev;
-        return prev.map((t) =>
-          t.id === activeTurnId ? { ...t, events: [...t.events, event] } : t
-        );
+        return prev.map((t) => {
+          if (t.id !== activeTurnId) return t;
+          const nextEvents = trimEvents([...t.events, event]);
+          return { ...t, events: nextEvents };
+        });
+      });
+    },
+    [activeTurnId]
+  );
+
+  const updateStreamingEventForActiveTurn = useCallback(
+    (kind: "assistant_delta" | "thinking", text: string) => {
+      setTurns((prev) => {
+        if (activeTurnId === null) return prev;
+        return prev.map((t) => {
+          if (t.id !== activeTurnId) return t;
+          const events = t.events;
+          const last = events[events.length - 1];
+          let nextEvents: TurnEvent[];
+          if (last && last.kind === kind) {
+            const updatedLast: TurnEvent = { ...last, payload: text };
+            nextEvents = [...events.slice(0, -1), updatedLast];
+          } else {
+            nextEvents = [...events, { kind, payload: text }];
+          }
+          nextEvents = trimEvents(nextEvents);
+          return { ...t, events: nextEvents };
+        });
       });
     },
     [activeTurnId]
@@ -120,14 +294,17 @@ export default function App() {
         let next = prev.map((t) => {
           if (!found && t.toolNodes[toolId]) {
             found = true;
-            return { ...t, events: [...t.events, event] };
+            const nextEvents = trimEvents([...t.events, event]);
+            return { ...t, events: nextEvents };
           }
           return t;
         });
         if (found) return next;
         if (activeTurnId === null) return next;
         next = next.map((t) =>
-          t.id === activeTurnId ? { ...t, events: [...t.events, event] } : t
+          t.id === activeTurnId
+            ? { ...t, events: trimEvents([...t.events, event]) }
+            : t
         );
         return next;
       });
@@ -149,33 +326,21 @@ export default function App() {
     (m: StdoutMessage) => {
       if (m.type === "delta") {
         streamBufRef.current += m.value;
-        setStreamBuf(streamBufRef.current);
-        appendEventToActiveTurn({
-          kind: "assistant_delta",
-          // Store only the new chunk so each delta
-          // is rendered as its own event in order.
-          payload: m.value,
-        });
+        updateStreamingEventForActiveTurn("assistant_delta", streamBufRef.current);
         return;
       }
       if (m.type === "thinking") {
         thinkingBufRef.current += m.value;
-        setThinkingBuf(thinkingBufRef.current);
-        appendEventToActiveTurn({
-          kind: "thinking",
-          // Store only the new chunk so each thinking
-          // update is rendered as its own event in order.
-          payload: m.value,
-        });
+        updateStreamingEventForActiveTurn("thinking", thinkingBufRef.current);
         return;
       }
       if (m.type === "done") {
-        // End of streaming for this turn: just clear the buffers.
-        // We intentionally do NOT accumulate or render a final combined message.
         streamBufRef.current = "";
-        setStreamBuf("");
         thinkingBufRef.current = "";
-        setThinkingBuf("");
+        if (turnStartRef.current != null) {
+          setTurnElapsed(Date.now() - turnStartRef.current);
+          turnStartRef.current = null;
+        }
         return;
       }
       if (m.type === "tool_start") {
@@ -266,7 +431,13 @@ export default function App() {
         });
       }
     },
-    [appendEventToActiveTurn, updateActiveTurn, updateTurnByToolId, appendEventForToolId]
+    [
+      appendEventToActiveTurn,
+      updateActiveTurn,
+      updateTurnByToolId,
+      appendEventForToolId,
+      updateStreamingEventForActiveTurn,
+    ]
   );
 
   useEffect(() => {
@@ -293,12 +464,10 @@ export default function App() {
     ]);
     setActiveTurnId(id);
     setDraft("");
-    // Reset streaming buffers for the new query so all backend messages
-    // (delta, thinking, tools, etc.) start fresh for this turn.
     streamBufRef.current = "";
-    setStreamBuf("");
     thinkingBufRef.current = "";
-    setThinkingBuf("");
+    turnStartRef.current = Date.now();
+    setTurnElapsed(null);
     backend.send("query", text);
   }, [draft, backend]);
 
@@ -311,6 +480,11 @@ export default function App() {
       } else {
         exit();
       }
+      return;
+    }
+    if (key.ctrl && (input === "o" || input === "\x0f")) {
+      lastCtrlORef.current = Date.now();
+      setToolsExpanded((v) => !v);
       return;
     }
     if (key.tab) {
@@ -360,92 +534,19 @@ export default function App() {
       <Intro version={getVersion()} />
       <Box flexDirection="column" marginTop={0} minHeight={0}>
         {(() => {
-          const recentTurns = turns.slice(-10);
+          const recentTurns = turns.slice(-MAX_TURNS_IN_VIEW);
           const lastTurnId = recentTurns[recentTurns.length - 1]?.id ?? null;
           return (
             <>
               {recentTurns.map((turn) => {
-                const events = turn.events;
-                const renderedToolIds = new Set<string>();
-
                 return (
-                  <Box key={turn.id} flexDirection="column" marginBottom={1}>
-                    <Box marginBottom={1}>
-                      <Text
-                        color="#F982FF"
-                        backgroundColor="#292929"
-                        wrap="wrap"
-                      >
-                        {"> "}
-                        {turn.userText}
-                      </Text>
-                    </Box>
-                    {events.map((event, idx) => {
-                      const key = `turn-${turn.id}-event-${idx}-${event.kind}`;
-                      if (event.kind === "thinking") {
-                        const text = String(event.payload ?? "");
-                        if (!text) return null;
-                        return (
-                          <Box key={key} flexDirection="column" marginBottom={1}>
-                            <Text wrap="wrap" color={colors.thinkingText}>
-                              {text}
-                            </Text>
-                          </Box>
-                        );
-                      }
-                      if (event.kind === "assistant_delta") {
-                        const text = String(event.payload ?? "");
-                        if (!text) return null;
-                        const fenced = parseFencedCodeBlock(text);
-                        return (
-                          <Box key={key} flexDirection="row" marginBottom={1}>
-                            <Text color={colors.inputBarBg}>● </Text>
-                            <Box marginLeft={1}>
-                              {fenced ? (
-                                <Text>{highlightCode(fenced.code, fenced.language)}</Text>
-                              ) : (
-                                <Markdown
-                                  heading={chalk.hex(colors.paletteHighlight).bold}
-                                  firstHeading={chalk.hex(colors.introTextPink).bold}
-                                  code={chalk.hex(colors.green)}
-                                  codespan={chalk.hex(colors.orange)}
-                                >
-                                  {text}
-                                </Markdown>
-                              )}
-                            </Box>
-                          </Box>
-                        );
-                      }
-                      if (event.kind === "tool_start" || event.kind === "tool_result") {
-                        const toolId = (event.payload as { toolId: string }).toolId;
-                        if (renderedToolIds.has(toolId)) return null;
-                        renderedToolIds.add(toolId);
-                        const node = turn.toolNodes[toolId];
-                        if (!node) return null;
-                        return (
-                          <Box key={key} marginBottom={1}>
-                            <ToolTree nodes={[node]} />
-                          </Box>
-                        );
-                      }
-                      if (event.kind === "error") {
-                        const text = String(event.payload ?? "");
-                        return (
-                          <Box key={key} marginBottom={1}>
-                            <Text color={colors.red}>{text}</Text>
-                          </Box>
-                        );
-                      }
-                      // cost events are tracked but rendered only once globally
-                      // using the latest `cost` state below the spinner.
-                      if (event.kind === "user") {
-                        // Already rendered as turn.userText above.
-                        return null;
-                      }
-                      return null;
-                    })}
-                  </Box>
+                  <TurnView
+                    key={turn.id}
+                    turn={turn}
+                    isLastTurn={turn.id === lastTurnId}
+                    backendBusy={backend.busy}
+                    toolsExpanded={toolsExpanded}
+                  />
                 );
               })}
             </>
@@ -453,14 +554,21 @@ export default function App() {
         })()}
       </Box>
       <SpinnerPanel busy={backend.busy} />
-      {cost ? (
+      {cost || turnElapsed != null ? (
         <Box marginTop={1} marginLeft={1}>
           <Text dimColor>
-            ↑ {String(cost.total_input_tokens)} ↓ {String(cost.total_output_tokens)}
-            {(cost as Record<string, unknown>).context_window_used != null
-              ? ` • ${String((cost as Record<string, unknown>).context_window_used)}`
-              : ""}{" "}
-            • {String(cost.cost)}
+            {cost ? (
+              <>
+                ↑ {String(cost.total_input_tokens)} ↓ {String(cost.total_output_tokens)}
+                {(cost as Record<string, unknown>).context_window_used != null
+                  ? ` • ${String((cost as Record<string, unknown>).context_window_used)}`
+                  : ""}{" "}
+                • {String(cost.cost)}
+              </>
+            ) : null}
+            {turnElapsed != null ? (
+              <>{cost ? " • " : "$ "}{(turnElapsed / 1000).toFixed(1)}s</>
+            ) : null}
           </Text>
         </Box>
       ) : null}
@@ -469,7 +577,11 @@ export default function App() {
           <Text color={colors.accent}>
             <TextInput
               value={draft}
-              onChange={setDraft}
+              onChange={(val) => {
+                if (val === draft + "\x0f") return;
+                if (Date.now() - lastCtrlORef.current < 300 && val === draft + "o") return;
+                setDraft(val);
+              }}
               onSubmit={submit}
               showCursor
             />

@@ -10,7 +10,7 @@
   <video width="480" height="354" src="https://github.com/user-attachments/assets/78d521dd-c527-4111-b54e-33da8601fddd" autoplay loop muted playsinline preload="auto" style="display:block;border:0;outline:0;background:transparent;"></video>
 </p>
 
-## Status
+## Status (WIP 🚧)
 
 Grepo is currently a work in progress. Expect breaking changes while the CLI,
 protocol, and setup flow are still being refined.

@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <video width="646" height="476" src="https://pub-07797d5717a3463f9fbb4242174445ad.r2.dev/grepo-landing-vid.mp4" controls></video>
+  <video width="646" height="476" src="https://github.com/user-attachments/assets/78d521dd-c527-4111-b54e-33da8601fddd" controls></video>
 </p>
 
 ## Status

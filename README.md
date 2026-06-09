@@ -3,7 +3,7 @@
 </h1>
 
 <p align="center">
-  Lightweight agentic CLI for your terminal.
+  Agentic CLI for your terminal.
 </p>
 
 <p align="center">

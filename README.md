@@ -1,13 +1,13 @@
-<h1 align="center">
+<h3 align="center">
   Grepo
-</h1>
+</h3>
 
 <p align="center">
   Agentic CLI for your terminal.
 </p>
 
 <p align="center">
-  <video width="520" height="383" src="https://github.com/user-attachments/assets/78d521dd-c527-4111-b54e-33da8601fddd" autoplay loop muted playsinline></video>
+  <video width="480" height="354" src="https://github.com/user-attachments/assets/78d521dd-c527-4111-b54e-33da8601fddd" autoplay loop muted playsinline preload="auto" style="display:block;border:0;outline:0;background:transparent;"></video>
 </p>
 
 ## Status

@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <video width="646" height="476" src="https://github.com/user-attachments/assets/78d521dd-c527-4111-b54e-33da8601fddd" controls></video>
+  <video width="520" height="383" src="https://github.com/user-attachments/assets/78d521dd-c527-4111-b54e-33da8601fddd" autoplay loop muted playsinline></video>
 </p>
 
 ## Status

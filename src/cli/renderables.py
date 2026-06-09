@@ -15,7 +15,7 @@ from rich.tree import Tree
 
 from cli import __version__
 from cli.commands import Commands
-from cli.utils import check_version_updates
+from cli.utils import check_version_updates, color_palette
 
 # Custom box with no left/right borders (only top and bottom horizontal lines)
 NO_SIDE_BORDER_BOX = Box(

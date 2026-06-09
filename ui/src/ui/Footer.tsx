@@ -12,7 +12,7 @@ export function Footer({
   compaction: boolean;
   onExitStats?: boolean;
 }) {
-  const left = "Press / for commands • Ctrl+C (quit)";
+  const left = "Press / for commands • ctrl+o (expand tools) • ctrl+c (quit)";
   const right = thinking
     ? "Thinking on (tab to toggle)"
     : "Thinking off (tab to toggle)";
